@@ -25,17 +25,17 @@ secrets/
 *.sqlite3
 *.db-shm
 *.db-wal
-data/
-storage/
+# Laufzeit-Datenverzeichnisse (anker auf Root/Backend, damit Quell-Packages
+# wie internal/core/storage NICHT getroffen werden)
+/data/
+/backend/data/
 
 # --------------------------------------------------------------------------
 # Go (backend/)
 # --------------------------------------------------------------------------
-# Kompilierte Binaries / Build-Output
+# Kompilierte Binaries / Build-Output (immer nach backend/bin/ bauen)
 backend/bin/
 backend/dist/
-pad
-pad.exe
 *.exe
 *.exe~
 *.dll
