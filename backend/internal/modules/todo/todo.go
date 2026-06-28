@@ -27,8 +27,8 @@ func New() *Module { return &Module{} }
 // Name identifies the module; its routes live under /api/todo.
 func (*Module) Name() string { return "todo" }
 
-// RegisterRoutes mounts the ToDo endpoints. Projects are wired first; todos and
-// tags follow in later commits on this branch.
+// RegisterRoutes mounts the ToDo endpoints. Projects and todos are wired; tags
+// follow in a later commit on this branch.
 func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
 	m.q = db.New(deps.DB)
 
@@ -39,6 +39,14 @@ func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
 			p.Get("/{id}", m.getProject)
 			p.Put("/{id}", m.updateProject)
 			p.Delete("/{id}", m.deleteProject)
+		})
+
+		t.Route("/todos", func(td chi.Router) {
+			td.Get("/", m.listTodos)
+			td.Post("/", m.createTodo)
+			td.Get("/{id}", m.getTodo)
+			td.Put("/{id}", m.updateTodo)
+			td.Delete("/{id}", m.deleteTodo)
 		})
 	})
 }
