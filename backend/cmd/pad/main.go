@@ -1,10 +1,10 @@
-// Command pad starts the PAD backend HTTP server.
+// Command pad starts the pad backend HTTP server.
 package main
 
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,14 +16,21 @@ import (
 
 	"github.com/TimSchwietzke/pad/backend/internal/core/auth"
 	"github.com/TimSchwietzke/pad/backend/internal/core/config"
+	"github.com/TimSchwietzke/pad/backend/internal/core/logging"
 	"github.com/TimSchwietzke/pad/backend/internal/core/module"
 	"github.com/TimSchwietzke/pad/backend/internal/modules/health"
 )
 
 func main() {
 	cfg := config.Load()
+
+	// Bring logging up first so everything below — a config error included — is
+	// reported through the structured logger rather than the bare std logger.
+	logging.Setup(cfg)
+
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid configuration: %v", err)
+		slog.Error("invalid configuration", slog.Any("err", err))
+		os.Exit(1)
 	}
 	cfg.WarnIfInsecure()
 
@@ -33,13 +40,14 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	// Every /api route sits behind the auth boundary.
 	r.Route("/api", func(api chi.Router) {
 		api.Use(authSvc.Middleware)
+		// Request logging runs after auth so each line carries the user id.
+		api.Use(logging.RequestLogger)
 
 		// Module registry: enable a module by adding it here. Disabling or
 		// swapping a module is a one-line change and touches nothing else.
@@ -48,7 +56,7 @@ func main() {
 		}
 		for _, m := range modules {
 			m.RegisterRoutes(api, deps)
-			log.Printf("module registered: %s", m.Name())
+			slog.Info("module registered", slog.String("module", m.Name()))
 		}
 	})
 
@@ -59,9 +67,12 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("pad backend listening on http://%s (auth=%s)", cfg.Addr(), cfg.AuthMode)
+		slog.Info("server starting",
+			slog.String("addr", cfg.Addr()),
+			slog.String("auth_mode", string(cfg.AuthMode)))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", slog.Any("err", err))
+			os.Exit(1)
 		}
 	}()
 
@@ -72,7 +83,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", slog.Any("err", err))
 	}
-	log.Println("pad backend stopped")
+	slog.Info("server stopped")
 }

@@ -82,6 +82,7 @@ pad/
 │   │   │   ├── relations/   # generische Verknüpfungen zwischen Entitäten
 │   │   │   ├── notify/      # Notification-Service + Kanäle (Telegram/Email)
 │   │   │   ├── jobs/        # Scheduler / Worker-Interface
+│   │   │   ├── logging/     # slog-Setup + Request-Logging-Middleware
 │   │   │   ├── httputil/    # JSON-Helfer, Fehlerformat, Pagination
 │   │   │   └── storage/     # DB-Verbindung, Migrations-Runner
 │   │   └── modules/
@@ -191,6 +192,14 @@ type Service interface {                                    // Core-Dienst
 - Listen mit Pagination (`?limit=&cursor=`).
 - Zeitstempel ISO-8601 UTC.
 - Validierung am Rand (Handler), Logik in der Service-Schicht, SQL in `queries/`.
+
+### 5.7 Logging
+
+- Strukturiertes Logging über Go-`slog` (stdlib, keine Dependency).
+- Format über `PAD_LOG_FORMAT`: `text` (lesbar, lokal) oder `json` (maschinenlesbar, gehostet + spätere Python-Analyse).
+- Request-Logging-Middleware (nach der Auth-Boundary) schreibt pro Request: `method`, `path`, `status`, `latency_ms`, `request_id`, `remote_addr`, `user_id`.
+- Security-relevante Ereignisse (Login-Fehler, Zugriff verweigert) folgen später als eigener Audit-Stream.
+- **Nie** Secrets/Tokens/Passwörter/unnötige Personendaten loggen.
 
 ---
 

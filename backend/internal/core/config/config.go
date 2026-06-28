@@ -3,10 +3,9 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
-	"strings"
 )
 
 // AuthMode selects how requests are authenticated.
@@ -19,19 +18,31 @@ const (
 	AuthOAuth AuthMode = "oauth"
 )
 
+// LogFormat selects how log lines are rendered.
+type LogFormat string
+
+const (
+	// LogText is human-readable output, meant for local development.
+	LogText LogFormat = "text"
+	// LogJSON is one JSON object per line, meant for hosting and later analysis.
+	LogJSON LogFormat = "json"
+)
+
 // Config is the resolved runtime configuration.
 type Config struct {
-	Host     string
-	Port     string
-	AuthMode AuthMode
+	Host      string
+	Port      string
+	AuthMode  AuthMode
+	LogFormat LogFormat
 }
 
 // Load reads configuration from the environment, applying safe defaults.
 func Load() Config {
 	return Config{
-		Host:     getenv("PAD_HOST", "127.0.0.1"),
-		Port:     getenv("PAD_PORT", "8080"),
-		AuthMode: AuthMode(getenv("AUTH_MODE", string(AuthNone))),
+		Host:      getenv("PAD_HOST", "127.0.0.1"),
+		Port:      getenv("PAD_PORT", "8080"),
+		AuthMode:  AuthMode(getenv("AUTH_MODE", string(AuthNone))),
+		LogFormat: LogFormat(getenv("PAD_LOG_FORMAT", string(LogText))),
 	}
 }
 
@@ -40,13 +51,18 @@ func (c Config) Addr() string {
 	return net.JoinHostPort(c.Host, c.Port)
 }
 
-// Validate rejects unknown modes and enforces the bind guard from SECURITY.md:
+// Validate rejects unknown values and enforces the bind guard from SECURITY.md:
 // the server may only bind beyond loopback when real auth is active.
 func (c Config) Validate() error {
 	switch c.AuthMode {
 	case AuthNone, AuthOAuth:
 	default:
 		return fmt.Errorf("unknown AUTH_MODE %q (want none|oauth)", c.AuthMode)
+	}
+	switch c.LogFormat {
+	case LogText, LogJSON:
+	default:
+		return fmt.Errorf("unknown PAD_LOG_FORMAT %q (want text|json)", c.LogFormat)
 	}
 	if c.AuthMode == AuthNone && !isLoopback(c.Host) {
 		return fmt.Errorf(
@@ -57,16 +73,15 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// WarnIfInsecure prints a loud banner whenever auth is disabled.
+// WarnIfInsecure emits a WARN log whenever auth is disabled. Structured logging
+// replaced the old ASCII banner: a WARN line is just as impossible to miss in
+// the dev text output and stays machine-filterable once we ship JSON.
 func (c Config) WarnIfInsecure() {
 	if c.AuthMode != AuthNone {
 		return
 	}
-	bar := strings.Repeat("!", 72)
-	log.Println(bar)
-	log.Println("!!  AUTH_MODE=none — NO AUTHENTICATION. Local development only.")
-	log.Println("!!  Do NOT host, expose, or publish pad in this mode. See SECURITY.md.")
-	log.Println(bar)
+	slog.Warn("authentication disabled — local development only, do not expose (see SECURITY.md)",
+		slog.String("auth_mode", string(c.AuthMode)))
 }
 
 func isLoopback(host string) bool {
