@@ -62,6 +62,10 @@ SELECT * FROM todo_tags
 WHERE user_id = $1
 ORDER BY name;
 
+-- name: GetTag :one
+SELECT * FROM todo_tags
+WHERE id = $1 AND user_id = $2;
+
 -- name: DeleteTag :exec
 DELETE FROM todo_tags
 WHERE id = $1 AND user_id = $2;

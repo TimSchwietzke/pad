@@ -27,8 +27,8 @@ func New() *Module { return &Module{} }
 // Name identifies the module; its routes live under /api/todo.
 func (*Module) Name() string { return "todo" }
 
-// RegisterRoutes mounts the ToDo endpoints. Projects and todos are wired; tags
-// follow in a later commit on this branch.
+// RegisterRoutes mounts all ToDo endpoints under /api/todo: projects, todos
+// (with per-todo tag assignment), and tags.
 func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
 	m.q = db.New(deps.DB)
 
@@ -47,6 +47,19 @@ func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
 			td.Get("/{id}", m.getTodo)
 			td.Put("/{id}", m.updateTodo)
 			td.Delete("/{id}", m.deleteTodo)
+
+			// Tag assignment is scoped to a specific todo.
+			td.Route("/{id}/tags", func(tt chi.Router) {
+				tt.Get("/", m.listTodoTags)
+				tt.Post("/{tagID}", m.addTodoTag)
+				tt.Delete("/{tagID}", m.removeTodoTag)
+			})
+		})
+
+		t.Route("/tags", func(tg chi.Router) {
+			tg.Get("/", m.listTags)
+			tg.Post("/", m.createTag)
+			tg.Delete("/{id}", m.deleteTag)
 		})
 	})
 }
@@ -70,10 +83,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 
 // idParam parses the {id} path segment as an int64, writing a 400 on failure.
 func idParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	return int64Param(w, r, "id")
+}
+
+// int64Param parses the named path segment as an int64, writing a 400 on failure.
+func int64Param(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+	v, err := strconv.ParseInt(chi.URLParam(r, name), 10, 64)
 	if err != nil {
-		httputil.Error(w, http.StatusBadRequest, "invalid_id", "id must be an integer")
+		httputil.Error(w, http.StatusBadRequest, "invalid_id", name+" must be an integer")
 		return 0, false
 	}
-	return id, true
+	return v, true
 }

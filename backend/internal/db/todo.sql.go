@@ -187,6 +187,23 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (TodoPro
 	return i, err
 }
 
+const getTag = `-- name: GetTag :one
+SELECT id, user_id, name FROM todo_tags
+WHERE id = $1 AND user_id = $2
+`
+
+type GetTagParams struct {
+	ID     int64 `json:"id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) GetTag(ctx context.Context, arg GetTagParams) (TodoTag, error) {
+	row := q.db.QueryRowContext(ctx, getTag, arg.ID, arg.UserID)
+	var i TodoTag
+	err := row.Scan(&i.ID, &i.UserID, &i.Name)
+	return i, err
+}
+
 const getTodo = `-- name: GetTodo :one
 SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at FROM todos
 WHERE id = $1 AND user_id = $2
