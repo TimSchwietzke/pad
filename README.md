@@ -74,6 +74,7 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 
 ### WIP / ToDo
 - **ToDo-Modul** (aktueller Branch): Backend fertig — Projekte, Todos und Tags (CRUD + Zuordnung), voll getestet. Frontend ist in Arbeit.
+- **Flexible Sortierung** (Kernfeature): Todos sortierbar nach Priorität, Aufwands-Schätzung und Zeit bis Deadline, anpassbar — inkl. Aufwandsfeld. Nächste Slice.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Slice** — Postgres + Backend containerisieren
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home
