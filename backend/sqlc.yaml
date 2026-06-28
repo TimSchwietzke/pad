@@ -1,0 +1,12 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"   # goose migration files double as the schema source
+    queries: "queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "database/sql"   # plain database/sql, driven by the pgx stdlib driver
+        emit_json_tags: true
+        emit_empty_slices: true
