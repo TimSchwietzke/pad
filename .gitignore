@@ -1,0 +1,135 @@
+# ==========================================================================
+# PAD – .gitignore
+# Stack: Go (backend) · React+Vite/TS (frontend) · Python (workers) · SQLite
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# Secrets & local config  (NEVER commit – siehe SECURITY.md)
+# --------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.local
+config.local.*
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+
+# --------------------------------------------------------------------------
+# Datenbank (SQLite – lokale Daten, nicht versionieren)
+# --------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+# Laufzeit-Datenverzeichnisse (anker auf Root/Backend, damit Quell-Packages
+# wie internal/core/storage NICHT getroffen werden)
+/data/
+/backend/data/
+
+# --------------------------------------------------------------------------
+# Go (backend/)
+# --------------------------------------------------------------------------
+# Kompilierte Binaries / Build-Output (immer nach backend/bin/ bauen)
+backend/bin/
+backend/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+# Test- & Coverage-Output
+*.test
+*.out
+coverage.*
+# Go workspace (lokal)
+go.work
+go.work.sum
+# Vendor-Verzeichnis (nur ignorieren, falls nicht bewusst eingecheckt)
+# vendor/
+
+# --------------------------------------------------------------------------
+# Node / React / Vite (frontend/)
+# --------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+# Build-Output
+frontend/dist/
+frontend/build/
+.vite/
+# Vite/TS Caches
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+# Logs der Paketmanager
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+# Optionaler Cache
+.cache/
+
+# --------------------------------------------------------------------------
+# Python (workers/ – später)
+# --------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.python-version
+
+# --------------------------------------------------------------------------
+# Tauri / Electron (Desktop-Wrapper – später)
+# --------------------------------------------------------------------------
+src-tauri/target/
+src-tauri/gen/
+out/
+release/
+
+# --------------------------------------------------------------------------
+# Docker / Deployment
+# --------------------------------------------------------------------------
+*.env.docker
+docker-compose.override.yml
+
+# --------------------------------------------------------------------------
+# Agent-/Skill-Tooling (reinstallierbar via `npx impeccable skills install`)
+# --------------------------------------------------------------------------
+.gemini/
+.claude/skills/impeccable/
+
+# --------------------------------------------------------------------------
+# Editor / IDE
+# --------------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+*~
+
+# --------------------------------------------------------------------------
+# OS
+# --------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --------------------------------------------------------------------------
+# Logs & temporäre Dateien
+# --------------------------------------------------------------------------
+*.log
+logs/
+tmp/
+temp/
