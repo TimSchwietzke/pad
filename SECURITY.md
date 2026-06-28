@@ -13,6 +13,7 @@ Bevor pad über `localhost` hinaus erreichbar wird (Pi, Heimnetz, Web), MUSS gel
 - [ ] Server bindet nur dann auf `0.0.0.0`, wenn Auth aktiv ist (Code-Guard vorhanden).
 - [ ] Secrets (Email, API-Keys, OAuth-Tokens) liegen **verschlüsselt**, nicht im Klartext.
 - [ ] Keine `.env` / keine Secrets im Git-Repo.
+- [ ] Keine Secrets/Tokens/Passwörter in Logs (strukturierte Logs dürfen kein Leck sein).
 - [ ] TLS aktiv (Reverse Proxy mit Zertifikat), wenn über das Netz erreichbar.
 - [ ] Default-User aus dem Dev-Modus ist entfernt/deaktiviert.
 
