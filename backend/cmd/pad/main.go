@@ -13,19 +13,25 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 
 	"github.com/TimSchwietzke/pad/backend/internal/core/auth"
 	"github.com/TimSchwietzke/pad/backend/internal/core/config"
 	"github.com/TimSchwietzke/pad/backend/internal/core/logging"
 	"github.com/TimSchwietzke/pad/backend/internal/core/module"
+	"github.com/TimSchwietzke/pad/backend/internal/core/storage"
 	"github.com/TimSchwietzke/pad/backend/internal/modules/health"
+	"github.com/TimSchwietzke/pad/backend/internal/modules/todo"
 )
 
 func main() {
+	// Load .env if present — local-dev convenience. In production the real
+	// environment already carries these values, so a missing file isn't an error.
+	_ = godotenv.Load()
+
 	cfg := config.Load()
 
-	// Bring logging up first so everything below — a config error included — is
-	// reported through the structured logger rather than the bare std logger.
+	// Logging first, so even a config error below is reported structured.
 	logging.Setup(cfg)
 
 	if err := cfg.Validate(); err != nil {
@@ -34,8 +40,24 @@ func main() {
 	}
 	cfg.WarnIfInsecure()
 
+	if cfg.DatabaseURL == "" {
+		slog.Error("DATABASE_URL is required (see backend/.env.example)")
+		os.Exit(1)
+	}
+	database, err := storage.Open(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database connection failed", slog.Any("err", err))
+		os.Exit(1)
+	}
+	defer database.Close()
+	if err := storage.Migrate(database); err != nil {
+		slog.Error("migrations failed", slog.Any("err", err))
+		os.Exit(1)
+	}
+	slog.Info("database ready")
+
 	authSvc := auth.New(cfg.AuthMode)
-	deps := module.Deps{Config: cfg, Auth: authSvc}
+	deps := module.Deps{Config: cfg, Auth: authSvc, DB: database}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -49,14 +71,14 @@ func main() {
 		// Request logging runs after auth so each line carries the user id.
 		api.Use(logging.RequestLogger)
 
-		// Module registry: enable a module by adding it here. Disabling or
-		// swapping a module is a one-line change and touches nothing else.
+		// Module registry: enable a module by adding it here.
 		modules := []module.Module{
 			health.New(),
+			todo.New(),
 		}
-		for _, m := range modules {
-			m.RegisterRoutes(api, deps)
-			slog.Info("module registered", slog.String("module", m.Name()))
+		for _, mod := range modules {
+			mod.RegisterRoutes(api, deps)
+			slog.Info("module registered", slog.String("module", mod.Name()))
 		}
 	})
 

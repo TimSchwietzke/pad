@@ -30,19 +30,21 @@ const (
 
 // Config is the resolved runtime configuration.
 type Config struct {
-	Host      string
-	Port      string
-	AuthMode  AuthMode
-	LogFormat LogFormat
+	Host        string
+	Port        string
+	AuthMode    AuthMode
+	LogFormat   LogFormat
+	DatabaseURL string
 }
 
 // Load reads configuration from the environment, applying safe defaults.
 func Load() Config {
 	return Config{
-		Host:      getenv("PAD_HOST", "127.0.0.1"),
-		Port:      getenv("PAD_PORT", "8080"),
-		AuthMode:  AuthMode(getenv("AUTH_MODE", string(AuthNone))),
-		LogFormat: LogFormat(getenv("PAD_LOG_FORMAT", string(LogText))),
+		Host:        getenv("PAD_HOST", "127.0.0.1"),
+		Port:        getenv("PAD_PORT", "8080"),
+		AuthMode:    AuthMode(getenv("AUTH_MODE", string(AuthNone))),
+		LogFormat:   LogFormat(getenv("PAD_LOG_FORMAT", string(LogText))),
+		DatabaseURL: getenv("DATABASE_URL", ""),
 	}
 }
 
