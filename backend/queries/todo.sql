@@ -27,23 +27,21 @@ WHERE id = $1 AND user_id = $2;
 -- Todos --------------------------------------------------------------------
 
 -- name: CreateTodo :one
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetTodo :one
 SELECT * FROM todos
 WHERE id = $1 AND user_id = $2;
 
--- name: ListTodos :many
-SELECT * FROM todos
-WHERE user_id = $1
-ORDER BY (due_at IS NULL), due_at, priority DESC, id;
+-- The todo list is sorted dynamically in Go (a whitelisted ORDER BY), so there
+-- is no fixed ListTodos query here.
 
 -- name: UpdateTodo :one
 UPDATE todos
-SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, updated_at = now()
-WHERE id = $7 AND user_id = $8
+SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7, updated_at = now()
+WHERE id = $8 AND user_id = $9
 RETURNING *;
 
 -- name: DeleteTodo :exec

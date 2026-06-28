@@ -24,39 +24,42 @@ var errProjectNotFound = errors.New("project not found")
 // todoResponse is the JSON shape returned to clients. Nullable columns become
 // pointers (null in JSON) instead of leaking sql.Null wrappers.
 type todoResponse struct {
-	ID        int64      `json:"id"`
-	ProjectID *int64     `json:"project_id"`
-	Title     string     `json:"title"`
-	Notes     string     `json:"notes"`
-	Priority  int32      `json:"priority"`
-	Status    string     `json:"status"`
-	DueAt     *time.Time `json:"due_at"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID              int64      `json:"id"`
+	ProjectID       *int64     `json:"project_id"`
+	Title           string     `json:"title"`
+	Notes           string     `json:"notes"`
+	Priority        int32      `json:"priority"`
+	Status          string     `json:"status"`
+	DueAt           *time.Time `json:"due_at"`
+	EstimateMinutes *int32     `json:"estimate_minutes"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 func toTodoResponse(t db.Todo) todoResponse {
 	return todoResponse{
-		ID:        t.ID,
-		ProjectID: int64Ptr(t.ProjectID),
-		Title:     t.Title,
-		Notes:     t.Notes,
-		Priority:  t.Priority,
-		Status:    t.Status,
-		DueAt:     timePtr(t.DueAt),
-		CreatedAt: t.CreatedAt,
-		UpdatedAt: t.UpdatedAt,
+		ID:              t.ID,
+		ProjectID:       int64Ptr(t.ProjectID),
+		Title:           t.Title,
+		Notes:           t.Notes,
+		Priority:        t.Priority,
+		Status:          t.Status,
+		DueAt:           timePtr(t.DueAt),
+		EstimateMinutes: int32Ptr(t.EstimateMinutes),
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
 	}
 }
 
 // todoRequest is the create/update payload. Pointer fields are optional.
 type todoRequest struct {
-	ProjectID *int64     `json:"project_id"`
-	Title     string     `json:"title"`
-	Notes     string     `json:"notes"`
-	Priority  int32      `json:"priority"`
-	Status    string     `json:"status"`
-	DueAt     *time.Time `json:"due_at"`
+	ProjectID       *int64     `json:"project_id"`
+	Title           string     `json:"title"`
+	Notes           string     `json:"notes"`
+	Priority        int32      `json:"priority"`
+	Status          string     `json:"status"`
+	DueAt           *time.Time `json:"due_at"`
+	EstimateMinutes *int32     `json:"estimate_minutes"`
 }
 
 // normalizeAndValidate trims the title, defaults an empty status to "open", and
@@ -75,6 +78,9 @@ func (b *todoRequest) normalizeAndValidate() error {
 	if b.Status != statusOpen && b.Status != statusDone {
 		return errors.New(`status must be "open" or "done"`)
 	}
+	if b.EstimateMinutes != nil && *b.EstimateMinutes < 0 {
+		return errors.New("estimate_minutes must be >= 0")
+	}
 	return nil
 }
 
@@ -92,16 +98,41 @@ func (m *Module) ensureProjectOwned(ctx context.Context, projectID *int64, uid i
 	return err
 }
 
-// listTodos returns the current user's todos, due ones first (see ListTodos).
+// listTodos returns the current user's todos, ordered by the optional ?sort=
+// spec (default: priority desc, then soonest due). Sort columns come from a
+// whitelist (see sort.go), so the dynamic ORDER BY can't be abused.
 func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
-	todos, err := m.q.ListTodos(r.Context(), userID(r))
+	terms, err := parseSort(r.URL.Query().Get("sort"))
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid_sort", err.Error())
+		return
+	}
+
+	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, created_at, updated_at`
+	query := `SELECT ` + cols + ` FROM todos WHERE user_id = $1 ORDER BY ` + orderClause(terms)
+
+	rows, err := m.db.QueryContext(r.Context(), query, userID(r))
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not load todos")
 		return
 	}
-	out := make([]todoResponse, 0, len(todos))
-	for _, t := range todos {
+	defer rows.Close()
+
+	out := []todoResponse{}
+	for rows.Next() {
+		var t db.Todo
+		if err := rows.Scan(
+			&t.ID, &t.UserID, &t.ProjectID, &t.Title, &t.Notes, &t.Priority,
+			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.CreatedAt, &t.UpdatedAt,
+		); err != nil {
+			httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
+			return
+		}
 		out = append(out, toTodoResponse(t))
+	}
+	if err := rows.Err(); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
+		return
 	}
 	httputil.JSON(w, http.StatusOK, out)
 }
@@ -124,13 +155,14 @@ func (m *Module) createTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := m.q.CreateTodo(r.Context(), db.CreateTodoParams{
-		UserID:    uid,
-		ProjectID: nullInt64(body.ProjectID),
-		Title:     body.Title,
-		Notes:     body.Notes,
-		Priority:  body.Priority,
-		Status:    body.Status,
-		DueAt:     nullTime(body.DueAt),
+		UserID:          uid,
+		ProjectID:       nullInt64(body.ProjectID),
+		Title:           body.Title,
+		Notes:           body.Notes,
+		Priority:        body.Priority,
+		Status:          body.Status,
+		DueAt:           nullTime(body.DueAt),
+		EstimateMinutes: nullInt32(body.EstimateMinutes),
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
@@ -179,14 +211,15 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := m.q.UpdateTodo(r.Context(), db.UpdateTodoParams{
-		ProjectID: nullInt64(body.ProjectID),
-		Title:     body.Title,
-		Notes:     body.Notes,
-		Priority:  body.Priority,
-		Status:    body.Status,
-		DueAt:     nullTime(body.DueAt),
-		ID:        id,
-		UserID:    uid,
+		ProjectID:       nullInt64(body.ProjectID),
+		Title:           body.Title,
+		Notes:           body.Notes,
+		Priority:        body.Priority,
+		Status:          body.Status,
+		DueAt:           nullTime(body.DueAt),
+		EstimateMinutes: nullInt32(body.EstimateMinutes),
+		ID:              id,
+		UserID:          uid,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		httputil.Error(w, http.StatusNotFound, "not_found", "todo not found")
@@ -231,6 +264,13 @@ func nullInt64(p *int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: *p, Valid: true}
 }
 
+func nullInt32(p *int32) sql.NullInt32 {
+	if p == nil {
+		return sql.NullInt32{}
+	}
+	return sql.NullInt32{Int32: *p, Valid: true}
+}
+
 func nullTime(p *time.Time) sql.NullTime {
 	if p == nil {
 		return sql.NullTime{}
@@ -243,6 +283,14 @@ func int64Ptr(n sql.NullInt64) *int64 {
 		return nil
 	}
 	v := n.Int64
+	return &v
+}
+
+func int32Ptr(n sql.NullInt32) *int32 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int32
 	return &v
 }
 

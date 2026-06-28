@@ -3,6 +3,7 @@
 package todo
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -15,9 +16,12 @@ import (
 	"github.com/TimSchwietzke/pad/backend/internal/db"
 )
 
-// Module wires the ToDo endpoints and holds the generated query layer.
+// Module wires the ToDo endpoints. It keeps the generated query layer for the
+// fixed CRUD, plus the raw DB handle for the one query that needs a dynamic
+// ORDER BY (the sortable todo list).
 type Module struct {
-	q *db.Queries
+	db *sql.DB
+	q  *db.Queries
 }
 
 // New creates the module. The query layer is attached in RegisterRoutes, once
@@ -30,6 +34,7 @@ func (*Module) Name() string { return "todo" }
 // RegisterRoutes mounts all ToDo endpoints under /api/todo: projects, todos
 // (with per-todo tag assignment), and tags.
 func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
+	m.db = deps.DB
 	m.q = db.New(deps.DB)
 
 	r.Route("/todo", func(t chi.Router) {
