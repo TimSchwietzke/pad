@@ -71,10 +71,10 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 - **Theming:** hell (Excel) / dunkel (Notion) + Google-Preset, zur Laufzeit umschaltbar
 - **Logging:** strukturiert via slog, `text`/`json` über `PAD_LOG_FORMAT`, plus Request-Logging
 - **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres
+- **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 
 ### WIP / ToDo
-- **ToDo-Modul** (aktueller Branch): Backend fertig — Projekte, Todos und Tags (CRUD + Zuordnung), voll getestet. Frontend ist in Arbeit.
-- **Flexible Sortierung** (Kernfeature): Todos sortierbar nach Priorität, Aufwands-Schätzung und Zeit bis Deadline, anpassbar — inkl. Aufwandsfeld. Nächste Slice.
+- **ToDo-Frontend** — die UI zum Modul (in Arbeit)
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Slice** — Postgres + Backend containerisieren
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home

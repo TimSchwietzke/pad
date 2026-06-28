@@ -50,7 +50,7 @@ Ab Stufe 2 ist pad über das Netz erreichbar → **Auth & Security sind dann Pfl
 ### Backend
 - **Go** mit **`chi`**-Router (leichtgewichtig, nah an stdlib).
 - **`sqlc`** für typsichere SQL-Queries (kein schweres ORM; echtes SQL lernen).
-- **SQLite** für MVP, **Postgres-ready** (saubere Migrations, kein DB-spezifischer Code in der Logik).
+- **PostgreSQL** (lokal installiert: PG18; später gehostet). Treiber `pgx`, Migrations über `goose`. DB-spezifischer Code bleibt in der Storage-Schicht (`core/storage`), die Logik kennt nur die generierten Queries.
 - **Migrations** über `goose` oder `golang-migrate`.
 
 ### Worker / Skripte (später, nicht MVP)
@@ -305,7 +305,7 @@ Absicherung dagegen:
 
 | Slice | Inhalt | Ergebnis |
 |---|---|---|
-| **0 – Skelett** | Monorepo, Go-Server serviert React-App, ein End-to-End-Request, SQLite, Migrations-Runner, Module-Registry, Auth-Boundary mit `none`-Modus + Startwarnung, Theme-Token-Setup, Dashboard-Grid-Gerüst. | Durchgestochene leere App, lauffähig. |
+| **0 – Skelett** | Monorepo, Go-Server serviert React-App, ein End-to-End-Request, Module-Registry, Auth-Boundary mit `none`-Modus + Startwarnung, Theme-Token-Setup, Dashboard-Grid-Gerüst. (DB folgt mit dem ToDo-Modul.) | Durchgestochene leere App, lauffähig. |
 | **1 – ToDo** | Volles ToDo-Modul (Projekte, Tags, Prios, Wiederholungen) + Widget. | Erstes echtes Feature. |
 | **2 – Kalender** | Events CRUD + ToDo↔Kalender-Verknüpfung + Widget. | Verknüpfte Module sichtbar. |
 | **3 – Bewerbungen** | Tabellen-Tracker + Widget. | MVP komplett. |

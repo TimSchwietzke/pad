@@ -76,19 +76,20 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (TodoTag, 
 
 const createTodo = `-- name: CreateTodo :one
 
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes
 `
 
 type CreateTodoParams struct {
-	UserID    int64         `json:"user_id"`
-	ProjectID sql.NullInt64 `json:"project_id"`
-	Title     string        `json:"title"`
-	Notes     string        `json:"notes"`
-	Priority  int32         `json:"priority"`
-	Status    string        `json:"status"`
-	DueAt     sql.NullTime  `json:"due_at"`
+	UserID          int64         `json:"user_id"`
+	ProjectID       sql.NullInt64 `json:"project_id"`
+	Title           string        `json:"title"`
+	Notes           string        `json:"notes"`
+	Priority        int32         `json:"priority"`
+	Status          string        `json:"status"`
+	DueAt           sql.NullTime  `json:"due_at"`
+	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
 }
 
 // Todos --------------------------------------------------------------------
@@ -101,6 +102,7 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		arg.Priority,
 		arg.Status,
 		arg.DueAt,
+		arg.EstimateMinutes,
 	)
 	var i Todo
 	err := row.Scan(
@@ -114,6 +116,7 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		&i.DueAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EstimateMinutes,
 	)
 	return i, err
 }
@@ -205,7 +208,7 @@ func (q *Queries) GetTag(ctx context.Context, arg GetTagParams) (TodoTag, error)
 }
 
 const getTodo = `-- name: GetTodo :one
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at FROM todos
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes FROM todos
 WHERE id = $1 AND user_id = $2
 `
 
@@ -228,6 +231,7 @@ func (q *Queries) GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error) 
 		&i.DueAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EstimateMinutes,
 	)
 	return i, err
 }
@@ -327,46 +331,6 @@ func (q *Queries) ListTagsForTodo(ctx context.Context, todoID int64) ([]TodoTag,
 	return items, nil
 }
 
-const listTodos = `-- name: ListTodos :many
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at FROM todos
-WHERE user_id = $1
-ORDER BY (due_at IS NULL), due_at, priority DESC, id
-`
-
-func (q *Queries) ListTodos(ctx context.Context, userID int64) ([]Todo, error) {
-	rows, err := q.db.QueryContext(ctx, listTodos, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Todo{}
-	for rows.Next() {
-		var i Todo
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.ProjectID,
-			&i.Title,
-			&i.Notes,
-			&i.Priority,
-			&i.Status,
-			&i.DueAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const removeTagFromTodo = `-- name: RemoveTagFromTodo :exec
 DELETE FROM todo_tag_map
 WHERE todo_id = $1 AND tag_id = $2
@@ -416,23 +380,27 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (T
 }
 
 const updateTodo = `-- name: UpdateTodo :one
+
 UPDATE todos
-SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, updated_at = now()
-WHERE id = $7 AND user_id = $8
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at
+SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7, updated_at = now()
+WHERE id = $8 AND user_id = $9
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes
 `
 
 type UpdateTodoParams struct {
-	ProjectID sql.NullInt64 `json:"project_id"`
-	Title     string        `json:"title"`
-	Notes     string        `json:"notes"`
-	Priority  int32         `json:"priority"`
-	Status    string        `json:"status"`
-	DueAt     sql.NullTime  `json:"due_at"`
-	ID        int64         `json:"id"`
-	UserID    int64         `json:"user_id"`
+	ProjectID       sql.NullInt64 `json:"project_id"`
+	Title           string        `json:"title"`
+	Notes           string        `json:"notes"`
+	Priority        int32         `json:"priority"`
+	Status          string        `json:"status"`
+	DueAt           sql.NullTime  `json:"due_at"`
+	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
+	ID              int64         `json:"id"`
+	UserID          int64         `json:"user_id"`
 }
 
+// The todo list is sorted dynamically in Go (a whitelisted ORDER BY), so there
+// is no fixed ListTodos query here.
 func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, error) {
 	row := q.db.QueryRowContext(ctx, updateTodo,
 		arg.ProjectID,
@@ -441,6 +409,7 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		arg.Priority,
 		arg.Status,
 		arg.DueAt,
+		arg.EstimateMinutes,
 		arg.ID,
 		arg.UserID,
 	)
@@ -456,6 +425,7 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		&i.DueAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EstimateMinutes,
 	)
 	return i, err
 }

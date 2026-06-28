@@ -10,16 +10,17 @@ import (
 )
 
 type Todo struct {
-	ID        int64         `json:"id"`
-	UserID    int64         `json:"user_id"`
-	ProjectID sql.NullInt64 `json:"project_id"`
-	Title     string        `json:"title"`
-	Notes     string        `json:"notes"`
-	Priority  int32         `json:"priority"`
-	Status    string        `json:"status"`
-	DueAt     sql.NullTime  `json:"due_at"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	ID              int64         `json:"id"`
+	UserID          int64         `json:"user_id"`
+	ProjectID       sql.NullInt64 `json:"project_id"`
+	Title           string        `json:"title"`
+	Notes           string        `json:"notes"`
+	Priority        int32         `json:"priority"`
+	Status          string        `json:"status"`
+	DueAt           sql.NullTime  `json:"due_at"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
 }
 
 type TodoProject struct {
