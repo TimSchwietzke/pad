@@ -3,6 +3,8 @@
 package module
 
 import (
+	"database/sql"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/TimSchwietzke/pad/backend/internal/core/auth"
@@ -14,6 +16,7 @@ import (
 type Deps struct {
 	Config config.Config
 	Auth   auth.Service
+	DB     *sql.DB
 }
 
 // Module is a self-contained feature. The registry calls RegisterRoutes for
