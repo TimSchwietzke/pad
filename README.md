@@ -73,7 +73,7 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 - **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres
 
 ### WIP / ToDo
-- **ToDo-Modul** (aktueller Branch): Postgres-Datenlayer ✓, Projekte-CRUD ✓ — Todos, Tags und das Frontend sind in Arbeit
+- **ToDo-Modul** (aktueller Branch): Postgres-Datenlayer ✓, Projekte-CRUD ✓, Todos-CRUD ✓ — Tags und das Frontend sind in Arbeit
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Slice** — Postgres + Backend containerisieren
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home
