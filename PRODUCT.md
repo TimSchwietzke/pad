@@ -41,6 +41,8 @@ Sprache und Ton: schlicht und menschlich, kein Marketing-Sprech.
 - **Überladenes Enterprise-Tool** — nicht der zugemüllte Jira/Confluence-Wust mit fünf Toolbars.
 - **Verspielte Consumer-App** — nicht gamifiziert, keine Maskottchen, keine übertriebenen Effekte.
 
+*Klarstellung:* **Informative, handlungsrelevante Indikatoren** (offen / heute fällig / überfällig / geschätzte Zeit heute) sind ausdrücklich **erwünscht** und abschaltbar. Vermieden wird nur der Vanity-/Gamification-Look — z. B. ein „Produktivitäts-Score" oder „+12%", der gut aussieht, aber keine Entscheidung stützt.
+
 ## Design Principles
 
 1. **Aus dem Weg.** Das Interface dient der Aufgabe. Chrome und Reibung reduzieren, damit der
