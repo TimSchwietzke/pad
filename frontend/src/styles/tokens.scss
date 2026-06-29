@@ -15,6 +15,15 @@
   --radius-lg: 16px;
   --radius-pill: 999px;
 
+  /* motion (theme-independent) — short, state-conveying transitions only.
+     ease-out so interactions decelerate naturally; never bounce/elastic. */
+  --motion-fast: 120ms;
+  --motion: 160ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* keyboard focus ring — drawn with the brand color, used app-wide */
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--color-primary);
+
   /* preset "Standard" — semantic component tokens */
   --font-family-base: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --radius-button: var(--radius-sm);
