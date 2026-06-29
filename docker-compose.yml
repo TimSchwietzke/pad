@@ -1,0 +1,54 @@
+# Local container stack for pad: PostgreSQL + the Go backend.
+#
+# Start it with `docker compose up --build` (or `npm run docker:up`). The backend
+# runs migrations on startup, so the database is ready on first boot.
+#
+# SECURITY: both ports are published on the host LOOPBACK only (127.0.0.1), so the
+# stack is reachable from this machine but NOT from the network — which is what
+# makes AUTH_MODE=none acceptable here (see SECURITY.md). The backend binds
+# 0.0.0.0 *inside* its container, which the bind guard normally forbids under
+# AUTH_MODE=none; PAD_ALLOW_NONLOOPBACK_BIND=1 is the explicit, container-only
+# opt-in for exactly this loopback-published setup. Do not change the publish
+# address to 0.0.0.0 until real auth (OAuth) is in place.
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: pad
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pad}
+      POSTGRES_DB: pad
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pad_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pad -d pad"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      PAD_HOST: 0.0.0.0
+      PAD_PORT: "8080"
+      AUTH_MODE: none
+      PAD_LOG_FORMAT: json
+      # Container-only: allow the 0.0.0.0 bind because the port below is loopback-published.
+      PAD_ALLOW_NONLOOPBACK_BIND: "1"
+      DATABASE_URL: postgres://pad:${POSTGRES_PASSWORD:-pad}@db:5432/pad?sslmode=disable
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pad_pgdata:

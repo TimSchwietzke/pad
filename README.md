@@ -56,8 +56,11 @@ Mehr im Detail: [ARCHITECTURE.md](ARCHITECTURE.md) (Aufbau & Schnittstellen) und
 
 ## Lokal starten
 
-Voraussetzungen: Go 1.26, Node 22, PostgreSQL. **Postgres muss laufen** — `npm run dev`
-startet keine Datenbank (das kommt erst mit der Docker-Slice via `docker compose up`).
+Zwei Wege: alles nativ (unten), oder PostgreSQL **und** Backend per Docker
+([Abschnitt unten](#mit-docker-postgres--backend)).
+
+Voraussetzungen (nativ): Go 1.26, Node 22, PostgreSQL. **Postgres muss laufen** —
+`npm run dev` startet keine Datenbank (dafür gibt es den Docker-Weg).
 
 1. Rolle `pad` und die Datenbanken `pad` + `pad_test` anlegen.
 2. `backend/.env` aus `backend/.env.example` erstellen und `DATABASE_URL` setzen.
@@ -80,6 +83,28 @@ Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeil
 > gefunden werden" — dann diesen Pfad zur PATH-Umgebungsvariable hinzufügen (ein gesetzter
 > Git-Bash-PATH genügt nicht, npm nutzt cmd).
 
+### Mit Docker (Postgres + Backend)
+
+Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
+
+1. `npm run docker:up` (bzw. `docker compose up --build`) — baut das Backend-Image,
+   startet PostgreSQL (mit Volume) und das Backend; Migrationen laufen beim Start.
+2. Backend liegt auf `http://127.0.0.1:8080`, Postgres auf `127.0.0.1:5432`.
+3. Frontend weiterhin auf dem Host: `npm --prefix frontend run dev` (Vite proxyt
+   `/api` aufs Backend). `npm run docker:down` stoppt den Stack.
+
+| Befehl | Tut |
+|---|---|
+| `npm run docker:up` | Postgres + Backend bauen und starten |
+| `npm run docker:down` | Stack stoppen (Daten bleiben im Volume) |
+| `npm run docker:logs` | Logs beider Container folgen |
+
+> **Sicherheit:** Beide Ports sind nur auf den **Host-Loopback** (`127.0.0.1`)
+> veröffentlicht, also nicht aus dem Netz erreichbar — deshalb ist `AUTH_MODE=none`
+> hier vertretbar. Der Container-Bind auf `0.0.0.0` ist über den expliziten Schalter
+> `PAD_ALLOW_NONLOOPBACK_BIND=1` erlaubt; **nie** mit netz-erreichbarer Veröffentlichung
+> kombinieren (siehe [SECURITY.md](SECURITY.md)). Netz-Exposition erst mit echtem Auth.
+
 ## Stand
 
 ### Done
@@ -89,6 +114,7 @@ Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeil
 - **Logging:** strukturiert via slog, `text`/`json` über `PAD_LOG_FORMAT`, plus Request-Logging
 - **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres, Frontend via Vitest + Testing Library + MSW
 - **Dev-Orchestrator:** `npm run dev` startet Backend + Frontend mit einem Befehl (Root-`package.json` + `concurrently`); dazu `check` / `test` / `verify`
+- **Docker:** `docker compose up` startet PostgreSQL + Backend (Multi-Stage-Image, non-root, Healthchecks, persistentes Volume); Ports nur auf Host-Loopback veröffentlicht
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 - **Custom-Reihenfolge:** Aufgaben aus **jeder** Sortierung per Drag-and-drop umordnen — die Anordnung wird automatisch als „custom"-Reihenfolge gespeichert und angezeigt; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
@@ -98,9 +124,12 @@ Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeil
 - **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines. Geplant.
 - **Fertige Todos** — nach dem Abhaken ausblenden (~3 s), Filter offen/fertig/beides, fertige standardmäßig unten. Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
+- **Listen-Gruppierung** — Liste in Unterlisten teilen (pro Projekt oder pro Zeitraum: heute/Woche/Monat, anpassbar). Geplant.
+- **Filter-Panel** — auswählen, was angezeigt wird; ein- und ausklappbares Panel statt fester Leiste. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt) und ein **settings**-Bereich (Theme/Preset etc.). Geplant.
+- **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
-- **Docker-Slice** — Postgres + Backend containerisieren
+- **Docker-Folgeschritte** — Frontend-Container / Tauri-Verpackung
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home
 - **Google-OAuth** (Login + Kalender/Mail-Zugriff) — Pflicht, bevor pad ins Netz geht
 

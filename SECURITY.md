@@ -21,3 +21,19 @@ Bevor pad über `localhost` hinaus erreichbar wird (Pi, Heimnetz, Web), MUSS gel
 1. Startup-Banner: lauter Warn-Log + UI-Hinweis, solange `AUTH_MODE=none`.
 2. Bind-Guard: `0.0.0.0` nur mit aktivem Auth-Modus, sonst Abbruch beim Start.
 3. Diese Checkliste als manueller Gate vor jedem Publish/Deploy.
+
+## Bind-Guard im Container: `PAD_ALLOW_NONLOOPBACK_BIND`
+
+Ein Prozess im Container muss auf `0.0.0.0` lauschen, damit ein veröffentlichter
+Port ihn erreicht — was der Bind-Guard (Punkt 2) bei `AUTH_MODE=none` sonst
+verbietet. `PAD_ALLOW_NONLOOPBACK_BIND=1` ist der **explizite, bewusste Opt-out**
+genau für diesen Fall. Er ist **nur sicher**, solange der Port auf den **Host-
+Loopback** veröffentlicht wird (`127.0.0.1:8080:8080` in `docker-compose.yml`), die
+App also weiterhin nicht aus dem Netz erreichbar ist. Beim Start wird zusätzlich
+laut gewarnt.
+
+- Default ist **aus** — für alle Nicht-Container-Läufe gilt der Guard unverändert.
+- Diesen Schalter **niemals** mit einer netz-erreichbaren Port-Veröffentlichung
+  (`0.0.0.0:8080:8080`, Reverse-Proxy ohne Auth, …) kombinieren — das ist genau
+  das, was die Pre-Publish-Checkliste oben verbietet. Netz-Exposition erst mit
+  echtem Auth (OAuth).
