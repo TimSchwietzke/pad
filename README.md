@@ -56,12 +56,29 @@ Mehr im Detail: [ARCHITECTURE.md](ARCHITECTURE.md) (Aufbau & Schnittstellen) und
 
 ## Lokal starten
 
-Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
+Voraussetzungen: Go 1.26, Node 22, PostgreSQL. **Postgres muss laufen** — `npm run dev`
+startet keine Datenbank (das kommt erst mit der Docker-Slice via `docker compose up`).
 
 1. Rolle `pad` und die Datenbanken `pad` + `pad_test` anlegen.
 2. `backend/.env` aus `backend/.env.example` erstellen und `DATABASE_URL` setzen.
-3. Backend: `go -C backend run ./cmd/pad` — läuft auf `:8080`, migriert beim Start.
-4. Frontend: `npm --prefix frontend run dev` — Vite proxyt `/api` aufs Backend.
+3. Einmalig Abhängigkeiten holen: `npm install` (Repo-Root, für den Dev-Orchestrator) und `npm --prefix frontend install`.
+4. `npm run dev` — startet Backend (`:8080`, migriert beim Start) **und** Frontend (Vite, proxyt `/api`) zusammen. Strg-C stoppt beide.
+
+### Befehle (Repo-Root)
+
+| Befehl | Tut |
+|---|---|
+| `npm run dev` | Backend + Frontend parallel starten (`-k`, Strg-C beendet beide) |
+| `npm run check` | Schneller Wiring-Check **ohne DB**: Frontend-Build + `go build`/`go vet` |
+| `npm test` | Frontend-Tests + Go-Tests (die Go-Integrationstests brauchen ein laufendes `pad_test`) |
+| `npm run verify` | `check` + `test` zusammen |
+
+Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeile gehängt.
+
+> **Windows-PATH:** `npm run *:backend` ruft `go` über cmd/PowerShell auf. Fehlt
+> `C:\Program Files\Go\bin` im **System-PATH**, erscheint „der Befehl 'go' … konnte nicht
+> gefunden werden" — dann diesen Pfad zur PATH-Umgebungsvariable hinzufügen (ein gesetzter
+> Git-Bash-PATH genügt nicht, npm nutzt cmd).
 
 ## Stand
 
@@ -71,6 +88,7 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 - **Theming:** hell (Excel) / dunkel (Notion) + Google-Preset, zur Laufzeit umschaltbar
 - **Logging:** strukturiert via slog, `text`/`json` über `PAD_LOG_FORMAT`, plus Request-Logging
 - **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres, Frontend via Vitest + Testing Library + MSW
+- **Dev-Orchestrator:** `npm run dev` startet Backend + Frontend mit einem Befehl (Root-`package.json` + `concurrently`); dazu `check` / `test` / `verify`
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 

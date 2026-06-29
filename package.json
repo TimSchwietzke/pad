@@ -1,0 +1,22 @@
+{
+  "name": "pad",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Personal Assistant Dashboard — dev orchestrator for the Go backend + React/Vite frontend.",
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "go -C backend run ./cmd/pad",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "start": "npm run dev",
+    "check": "npm run check:frontend && npm run check:backend",
+    "check:frontend": "npm --prefix frontend run build",
+    "check:backend": "go -C backend build ./... && go -C backend vet ./...",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "npm --prefix frontend test -- --passWithNoTests",
+    "test:backend": "go -C backend test ./...",
+    "verify": "npm run check && npm run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
