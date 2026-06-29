@@ -19,6 +19,8 @@ export const todoApi = {
   createTodo: (input: TodoInput) => http.post<Todo>('/api/todo/todos', input),
   updateTodo: (id: number, input: TodoInput) => http.put<Todo>(`/api/todo/todos/${id}`, input),
   deleteTodo: (id: number) => http.del(`/api/todo/todos/${id}`),
+  // Persist the manual "custom" order: the ids in the exact order they should take.
+  reorderTodos: (ids: number[]) => http.put<void>('/api/todo/todos/reorder', { ids }),
 
   // Tags + per-todo assignment
   listTags: () => http.get<Tag[]>('/api/todo/tags'),

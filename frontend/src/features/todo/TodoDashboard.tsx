@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useCreateTodo, useProjects, useTags, useTodos, useUpdateTodo } from './hooks'
+import { useCreateTodo, useProjects, useReorderTodos, useTags, useTodos, useUpdateTodo } from './hooks'
 import type { Priority, Project, Todo, TodoInput } from './types'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
 type View = 'dashboard' | 'todos'
 
 // Which field the list is sorted by, mapped to the backend's ?sort= spec.
-type SortKey = 'priority' | 'effort' | 'deadline'
+// "custom" is the manual drag order (todos.position).
+type SortKey = 'priority' | 'effort' | 'deadline' | 'custom'
 const sortSpec: Record<SortKey, string> = {
   priority: '-priority', // highest first
   effort: 'estimate', // smallest effort first
   deadline: 'due', // soonest deadline first
+  custom: 'position', // the user's manual order
 }
 
 // How densely the list is rendered. Comfortable is the roomy default;
@@ -107,6 +109,27 @@ export function TodoDashboard() {
   const todos = useTodos(sortSpec[sort])
   const create = useCreateTodo()
   const update = useUpdateTodo()
+  const reorder = useReorderTodos()
+
+  // Drag-to-reorder is only active in the "custom" sort. dragId is the row being
+  // dragged, overId the row it's hovering, so we can show a drop indicator.
+  const isCustom = sort === 'custom'
+  const [dragId, setDragId] = useState<number | null>(null)
+  const [overId, setOverId] = useState<number | null>(null)
+
+  /** Moves the dragged todo to the drop target's slot and persists the new order. */
+  const dropOn = (targetId: number) => {
+    setOverId(null)
+    if (dragId === null || dragId === targetId) return
+    const ids = (todos.data ?? []).map((t) => t.id)
+    const from = ids.indexOf(dragId)
+    const to = ids.indexOf(targetId)
+    setDragId(null)
+    if (from === -1 || to === -1) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
+    reorder.mutate(ids)
+  }
 
   const projectsById = useMemo(() => {
     const map = new Map<number, Project>()
@@ -216,7 +239,7 @@ export function TodoDashboard() {
             <div className="controlbar">
               <div className="controlbar__sort">
                 <span className="controlbar__label">sort by</span>
-                {(['priority', 'effort', 'deadline'] as SortKey[]).map((key) => (
+                {(['priority', 'effort', 'deadline', 'custom'] as SortKey[]).map((key) => (
                   <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
                     {key}
                   </button>
@@ -244,13 +267,37 @@ export function TodoDashboard() {
 
             {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
 
-            <ul className={`todo-list todo-list--${density}`}>
+            <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
               {(todos.data ?? []).map((todo) => {
                 const due = formatDue(todo.due_at)
                 const estimate = formatEstimate(todo.estimate_minutes)
                 const project = todo.project_id != null ? projectsById.get(todo.project_id) : undefined
+                const cls =
+                  'todo' +
+                  (todo.status === 'done' ? ' is-done' : '') +
+                  (dragId === todo.id ? ' is-dragging' : '') +
+                  (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '')
                 return (
-                  <li className={`todo${todo.status === 'done' ? ' is-done' : ''}`} key={todo.id}>
+                  <li
+                    className={cls}
+                    key={todo.id}
+                    draggable={isCustom}
+                    onDragStart={() => setDragId(todo.id)}
+                    onDragEnd={() => {
+                      setDragId(null)
+                      setOverId(null)
+                    }}
+                    onDragOver={(e) => {
+                      if (isCustom && dragId !== null) {
+                        e.preventDefault()
+                        if (overId !== todo.id) setOverId(todo.id)
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      dropOn(todo.id)
+                    }}
+                  >
                     <button
                       className="todo__check"
                       role="checkbox"
@@ -276,7 +323,7 @@ export function TodoDashboard() {
                         {due && <span className={`meta${due.overdue ? ' meta--overdue' : ''}`}><Cal /> {due.label}</span>}
                       </div>
                     </div>
-                    {/* placeholder for the future custom-priority / reorder handle */}
+                    {/* in custom sort the handle is the drag affordance; otherwise a hint */}
                     <span className="todo__handle" aria-hidden><Grip /></span>
                   </li>
                 )

@@ -91,9 +91,12 @@ Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeil
 - **Dev-Orchestrator:** `npm run dev` startet Backend + Frontend mit einem Befehl (Root-`package.json` + `concurrently`); dazu `check` / `test` / `verify`
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
+- **Custom-Reihenfolge:** „custom"-Sortmodus mit Drag-and-drop; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
 
 ### WIP / ToDo
-- **Priorisierungs-UI** — Werte pro Aufgabe setzen, Sortierung frei kombinieren, und ein „custom"-Modus mit persistenter Drag-Reihenfolge (Backend `position` + Reorder). Als Nächstes.
+- **Aufgaben-Parameter setzen** — Projekt, Deadline, Priorität, Aufwand und Tags pro Aufgabe in der GUI setzen (Idee: kleines Popup auf „c"/Klick); UI/UX noch offen. Als Nächstes.
+- **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines. Geplant.
+- **Fertige Todos** — nach dem Abhaken ausblenden (~3 s), Filter offen/fertig/beides, fertige standardmäßig unten. Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt) und ein **settings**-Bereich (Theme/Preset etc.). Geplant.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
