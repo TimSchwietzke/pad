@@ -22,6 +22,30 @@ input {
   color: inherit;
 }
 
+/* One keyboard-focus treatment for everything interactive. Mouse clicks stay
+   clean (:focus-visible only); keyboard users always get a visible ring —
+   required by the AA baseline in PRODUCT.md. */
+:where(button, input, a, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* The search and create-tile wrappers own the focus ring (see :focus-within),
+   so the bare inner input shouldn't draw a second one. */
+.search input:focus-visible,
+.create-tile input:focus-visible {
+  box-shadow: none;
+}
+
+/* Motion conveys state here, never decoration. Honor the OS preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
 .app {
   height: 100vh;
   display: grid;
@@ -54,26 +78,6 @@ input {
   color: var(--color-text-secondary);
 }
 
-.quick-add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--color-bg-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-input);
-  padding: 8px 12px;
-}
-.quick-add input {
-  border: 0;
-  background: transparent;
-  width: 100%;
-  outline: none;
-}
-.quick-add__icon {
-  color: var(--color-text-secondary);
-  display: inline-flex;
-}
-
 .nav {
   display: flex;
   flex-direction: column;
@@ -90,9 +94,11 @@ input {
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out);
 }
 .nav__item:hover:not(:disabled) {
   background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
 }
 .nav__item.is-active {
   background: var(--color-primary-bg);
@@ -126,6 +132,7 @@ input {
   gap: 8px;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
+  transition: background var(--motion) var(--ease-out);
 }
 .project:hover {
   background: var(--color-bg-surface-2);
@@ -177,9 +184,15 @@ input {
   align-items: center;
   gap: 8px;
   background: var(--color-bg-surface-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
   padding: 8px 14px;
   color: var(--color-text-secondary);
+  transition: border-color var(--motion) var(--ease-out), box-shadow var(--motion) var(--ease-out);
+}
+.search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
 }
 .search input {
   border: 0;
@@ -191,7 +204,15 @@ input {
 .topbar__actions {
   margin-left: auto;
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+}
+/* separates the utility icons from the account avatar */
+.topbar__divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--color-border);
 }
 .icon-btn {
   display: inline-flex;
@@ -200,15 +221,17 @@ input {
   min-width: 36px;
   height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--color-bg-surface);
+  background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out);
 }
 .icon-btn:hover {
   background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
 }
 
 .content {
@@ -219,28 +242,65 @@ input {
 .page-head {
   margin-bottom: var(--space-4);
 }
+.page-head--row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
 .page-title {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 2rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .page-sub {
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
+.page-head__actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
 
-.sortbar {
+/* secondary, low-chrome action button (filter / share) */
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-button);
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
+    border-color var(--motion) var(--ease-out);
+}
+.ghost-btn:hover {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-text-placeholder);
+}
+
+.controlbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 2px;
+  margin-bottom: var(--space-3);
+}
+.controlbar__sort {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  padding: 10px 14px;
-  margin-bottom: var(--space-4);
 }
-.sortbar__label {
+.controlbar__label {
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   margin-right: 4px;
@@ -250,16 +310,52 @@ input {
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   border-radius: var(--radius-pill);
-  padding: 5px 14px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
   cursor: pointer;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
+    border-color var(--motion) var(--ease-out);
 }
-.sort-pill:hover {
+.sort-pill:hover:not(.is-active) {
   background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-text-placeholder);
 }
 .sort-pill.is-active {
   background: var(--color-primary);
   color: var(--color-on-primary);
   border-color: var(--color-primary);
+}
+
+/* segmented control for list density */
+.seg {
+  display: inline-flex;
+  background: var(--color-bg-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.seg__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out);
+}
+.seg__btn:hover:not(.is-active) {
+  color: var(--color-text-primary);
+}
+.seg__btn.is-active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .todo-list {
@@ -278,16 +374,25 @@ input {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   padding: 14px 16px;
+  transition: border-color var(--motion) var(--ease-out), box-shadow var(--motion) var(--ease-out),
+    opacity var(--motion) var(--ease-out);
+}
+.todo:hover {
+  border-color: var(--color-text-placeholder);
+  box-shadow: var(--shadow-sm);
 }
 .todo.is-done {
-  opacity: 0.6;
+  opacity: 0.55;
+}
+.todo.is-done:hover {
+  opacity: 0.8;
 }
 .todo.is-done .todo__title {
   text-decoration: line-through;
 }
 .todo__check {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: flex;
   align-items: center;
@@ -296,6 +401,14 @@ input {
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+.todo__check:hover {
+  border-color: var(--color-primary);
+}
+.todo__check:active {
+  transform: scale(0.9);
 }
 .todo__check[aria-checked='true'] {
   background: var(--color-primary);
@@ -309,10 +422,23 @@ input {
   border: solid var(--color-on-primary);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+  animation: check-pop var(--motion) var(--ease-out);
+}
+@keyframes check-pop {
+  from {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(45deg) scale(1);
+  }
 }
 .todo__body {
   flex: 1;
   min-width: 0;
+  /* indent only the text column (title + meta), not the checkbox */
+  padding-left: 6px;
 }
 .todo__line {
   display: flex;
@@ -321,6 +447,38 @@ input {
 }
 .todo__title {
   font-size: 0.95rem;
+}
+
+/* future custom-priority / reorder handle — subtle until hovered */
+.todo__handle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-placeholder);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease-out), color var(--motion) var(--ease-out);
+}
+.todo:hover .todo__handle {
+  opacity: 0.7;
+}
+.todo__handle:hover {
+  opacity: 1;
+  color: var(--color-text-secondary);
+}
+
+/* density: compact tightens rows so more tasks fit on screen */
+.todo-list--compact {
+  gap: 6px;
+}
+.todo-list--compact .todo {
+  padding: 8px 16px;
+}
+.todo-list--compact .todo__meta {
+  margin-top: 3px;
+}
+.todo-list--compact .meta {
+  font-size: 0.76rem;
 }
 .todo__meta {
   display: flex;
@@ -366,6 +524,53 @@ input {
   color: var(--color-danger);
 }
 
+/* ---------- create tile (dashed CTA below the list) ---------- */
+.create-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
+    background var(--motion) var(--ease-out);
+}
+.create-tile:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+}
+.create-tile.is-editing {
+  border-style: solid;
+  border-color: var(--color-primary);
+  background: var(--color-bg-surface);
+  cursor: text;
+}
+.create-tile input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+}
+.create-tile kbd {
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+}
+
 /* ---------- account (placeholder; auth logic comes later) ---------- */
 .account {
   margin-top: auto;
@@ -378,6 +583,7 @@ input {
   cursor: pointer;
   text-align: left;
   padding: 12px 8px 4px;
+  transition: color var(--motion) var(--ease-out);
 }
 .account:hover {
   color: var(--color-text-primary);
@@ -444,9 +650,13 @@ input {
   padding: 8px 16px;
   border-radius: var(--radius-button);
   font-size: 0.9rem;
+  transition: background var(--motion) var(--ease-out);
 }
 .btn:hover {
   background: var(--color-primary-hover);
+}
+.btn:active {
+  transform: translateY(1px);
 }
 
 /* Sidebar collapses on small screens for now; full mobile layout comes later. */

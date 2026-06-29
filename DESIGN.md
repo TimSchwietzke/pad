@@ -185,7 +185,17 @@ Theme-Wechsel und spätere Anpassung funktionieren.
 
 ---
 
-## 5. Offene Punkte
+## 5. Schreibweise (UI-Text)
+
+UI-Texte sind **standardmäßig klein geschrieben** — Navigation, Buttons, Abschnitts-Labels,
+Überschriften, Platzhalter, Status- und Sortier-Begriffe (z. B. „to-dos", „new task",
+„priority", „today", „high"). Das ist bewusst, passt zur kleingeschriebenen Wortmarke „pad"
+und zum ruhigen, klaren Charakter (und ersetzt die getrackten Großbuchstaben-Labels).
+
+**Ausnahme:** vom Nutzer eingegebene Inhalte (Aufgaben-Titel, Projekt- und Tag-Namen) werden
+**genau so angezeigt, wie er sie getippt hat** — keine erzwungene Kleinschreibung seiner Daten.
+
+## 6. Offene Punkte
 * **Default-Preset festlegen:** startet pad in „Standard" oder „Google"? (Beeinflusst `:root`.)
 * Akzentfarbe des Standard-Presets final wählen (Blau `#0D6EFD` ist Startwert aus Stitch; „Excel-Grün" o. a. denkbar – ist nur 1 Token).
 * Finale Hex-Werte beim SCSS-Tokenset gegen die Stitch-Originale abgleichen.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useCreateTodo, useProjects, useTags, useTodos, useUpdateTodo } from './hooks'
 import type { Priority, Project, Todo, TodoInput } from './types'
@@ -13,6 +13,10 @@ const sortSpec: Record<SortKey, string> = {
   effort: 'estimate', // smallest effort first
   deadline: 'due', // soonest deadline first
 }
+
+// How densely the list is rendered. Comfortable is the roomy default;
+// compact tightens rows so more fits on screen.
+type Density = 'comfortable' | 'compact'
 
 const priorityLabel: Record<Exclude<Priority, 0>, string> = { 1: 'low', 2: 'medium', 3: 'high' }
 
@@ -38,6 +42,13 @@ function formatDue(iso: string | null): { label: string; overdue: boolean } | nu
   return { label, overdue: days < 0 }
 }
 
+/** A friendly, personal summary line for the to-dos header. */
+function pendingLabel(isPending: boolean, count: number): string {
+  if (isPending) return 'loading…'
+  if (count === 0) return "you're all caught up"
+  return `you have ${count} pending ${count === 1 ? 'task' : 'tasks'}`
+}
+
 // --- tiny inline icons (stroke, inherit color) ----------------------------
 const sv = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
 const Search = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.2-4.2" /></svg>
@@ -48,6 +59,14 @@ const Clock = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria
 const Cal = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M7 3v4M17 3v4M4 10h16" /></svg>
 const Grid = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></svg>
 const Check = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M5 12.5l4 4L19 7" /></svg>
+const Bell = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M6 9a6 6 0 0112 0c0 4.5 1.2 5.8 2.2 6.8.4.4.1 1.2-.5 1.2H4.3c-.6 0-.9-.8-.5-1.2C4.8 14.8 6 13.5 6 9z" /><path d="M10.2 20a1.9 1.9 0 003.6 0" /></svg>
+// custom-drawn icons (no third-party assets) — funnel for filter, export-up for share
+const Filter = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+const Share = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M12 15V4M8.5 7.5L12 4l3.5 3.5" /><path d="M5 13v5a2 2 0 002 2h10a2 2 0 002-2v-5" /></svg>
+const Rows = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="6" rx="1.5" /><rect x="4" y="13" width="16" height="6" rx="1.5" /></svg>
+const Lines = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+// six-dot drag affordance — a placeholder for the future custom-priority handle
+const Grip = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>
 
 /** A small round avatar placeholder (auth/account logic comes later). */
 function Avatar({ size = 32 }: { size?: number }) {
@@ -75,6 +94,7 @@ export function TodoDashboard() {
   )
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
+  const [density, setDensity] = useState<Density>('comfortable')
 
   useEffect(() => {
     const root = document.documentElement
@@ -170,6 +190,9 @@ export function TodoDashboard() {
             <button className="icon-btn" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
               {mode === 'light' ? <Moon /> : <Sun />}
             </button>
+            {/* notifications — surface lands with a later module */}
+            <button className="icon-btn" aria-label="notifications"><Bell /></button>
+            <span className="topbar__divider" aria-hidden />
             <button className="avatar-btn" aria-label="account"><Avatar size={34} /></button>
           </div>
         </header>
@@ -178,30 +201,50 @@ export function TodoDashboard() {
           <DashboardView onGoToTodos={() => setView('todos')} />
         ) : (
           <div className="content">
-            <div className="page-head">
+            <div className="page-head page-head--row">
               <div>
                 <h1 className="page-title">to-dos</h1>
-                <p className="page-sub">
-                  {todos.isPending ? 'loading…' : `${openCount} open ${openCount === 1 ? 'task' : 'tasks'}`}
-                </p>
+                <p className="page-sub">{pendingLabel(todos.isPending, openCount)}</p>
+              </div>
+              {/* filter + share land in their own slices; shown here as the entry points */}
+              <div className="page-head__actions">
+                <button className="ghost-btn" type="button"><Filter /> filter</button>
+                <button className="ghost-btn" type="button"><Share /> share</button>
               </div>
             </div>
 
-            <QuickAdd onAdd={(title) => create.mutate({ title })} pending={create.isPending} />
-
-            <div className="sortbar">
-              <span className="sortbar__label">sort by</span>
-              {(['priority', 'effort', 'deadline'] as SortKey[]).map((key) => (
-                <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
-                  {key}
+            <div className="controlbar">
+              <div className="controlbar__sort">
+                <span className="controlbar__label">sort by</span>
+                {(['priority', 'effort', 'deadline'] as SortKey[]).map((key) => (
+                  <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
+                    {key}
+                  </button>
+                ))}
+              </div>
+              <div className="seg" role="group" aria-label="view density">
+                <button
+                  className={`seg__btn${density === 'comfortable' ? ' is-active' : ''}`}
+                  aria-pressed={density === 'comfortable'}
+                  title="comfortable"
+                  onClick={() => setDensity('comfortable')}
+                >
+                  <Rows />
                 </button>
-              ))}
+                <button
+                  className={`seg__btn${density === 'compact' ? ' is-active' : ''}`}
+                  aria-pressed={density === 'compact'}
+                  title="compact"
+                  onClick={() => setDensity('compact')}
+                >
+                  <Lines />
+                </button>
+              </div>
             </div>
 
             {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
-            {todos.data?.length === 0 && <p className="state">no tasks yet — add one above.</p>}
 
-            <ul className="todo-list">
+            <ul className={`todo-list todo-list--${density}`}>
               {(todos.data ?? []).map((todo) => {
                 const due = formatDue(todo.due_at)
                 const estimate = formatEstimate(todo.estimate_minutes)
@@ -233,10 +276,14 @@ export function TodoDashboard() {
                         {due && <span className={`meta${due.overdue ? ' meta--overdue' : ''}`}><Cal /> {due.label}</span>}
                       </div>
                     </div>
+                    {/* placeholder for the future custom-priority / reorder handle */}
+                    <span className="todo__handle" aria-hidden><Grip /></span>
                   </li>
                 )
               })}
             </ul>
+
+            <CreateTask onAdd={(title) => create.mutate({ title })} pending={create.isPending} />
           </div>
         )}
       </main>
@@ -271,22 +318,75 @@ function SidebarSection({ label, children }: { label: string; children: ReactNod
   )
 }
 
-/** Quick-add input: type a title and press enter to create a task. */
-function QuickAdd({ onAdd, pending }: { onAdd: (title: string) => void; pending: boolean }) {
+/**
+ * Create affordance shown below the list: a dashed tile that invites a new task.
+ * Click it (or press "c" anywhere outside a field) to reveal an inline input;
+ * enter creates and keeps it open for rapid entry, escape or an empty blur closes it.
+ */
+function CreateTask({ onAdd, pending }: { onAdd: (title: string) => void; pending: boolean }) {
+  const [open, setOpen] = useState(false)
   const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // "c" is a global shortcut to start a new task, as long as the user isn't
+  // already typing somewhere (search box, the input itself, etc.).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      if (typing) return
+      e.preventDefault()
+      setOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus()
+  }, [open])
+
+  if (!open) {
+    return (
+      <button className="create-tile" type="button" onClick={() => setOpen(true)}>
+        <Plus />
+        <span>
+          click to create a new task — or press <kbd>c</kbd>
+        </span>
+      </button>
+    )
+  }
+
   return (
     <form
-      className="quick-add"
+      className="create-tile is-editing"
       onSubmit={(e) => {
         e.preventDefault()
         const title = value.trim()
         if (!title) return
         onAdd(title)
-        setValue('')
+        setValue('') // keep open so several tasks can be added in a row
       }}
     >
-      <span className="quick-add__icon"><Plus /></span>
-      <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="new task…" aria-label="new task" disabled={pending} />
+      <Plus />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (!value.trim()) setOpen(false)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setValue('')
+            setOpen(false)
+          }
+        }}
+        placeholder="what needs doing?"
+        aria-label="new task title"
+        disabled={pending}
+      />
     </form>
   )
 }
