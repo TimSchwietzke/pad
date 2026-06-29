@@ -587,9 +587,16 @@ input {
   color: var(--color-text-secondary);
 }
 
+/* ---------- sidebar footer (settings + account, pinned to the bottom) ------ */
+.sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 /* ---------- account (placeholder; auth logic comes later) ---------- */
 .account {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -635,6 +642,76 @@ input {
   cursor: pointer;
   padding: 0;
   display: inline-flex;
+}
+
+/* ---------- settings ---------- */
+.settings-group {
+  max-width: 640px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 4px 20px 16px;
+}
+.settings-group__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 16px 0 4px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-border);
+}
+.settings-group__title + .settings-row {
+  border-top: 0;
+}
+.settings-row__text {
+  display: flex;
+  flex-direction: column;
+}
+.settings-row__label {
+  font-size: 0.95rem;
+}
+.settings-row__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+.settings-note {
+  margin: 14px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-placeholder);
+}
+
+/* segmented text options (settings) */
+.opt-group {
+  display: inline-flex;
+  gap: 6px;
+  flex: none;
+}
+.opt {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-button);
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
+    border-color var(--motion) var(--ease-out);
+}
+.opt:hover:not(.is-active) {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-text-placeholder);
+}
+.opt.is-active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border-color: var(--color-primary);
 }
 
 /* ---------- dashboard placeholder ---------- */
