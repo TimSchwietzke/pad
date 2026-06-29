@@ -70,13 +70,13 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 - **Auth-Boundary** mit „no-auth"-Dev-Modus (lautes Banner + Bind-Guard, siehe [SECURITY.md](SECURITY.md))
 - **Theming:** hell (Excel) / dunkel (Notion) + Google-Preset, zur Laufzeit umschaltbar
 - **Logging:** strukturiert via slog, `text`/`json` über `PAD_LOG_FORMAT`, plus Request-Logging
-- **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres
+- **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres, Frontend via Vitest + Testing Library + MSW
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
+- **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 
 ### WIP / ToDo
-- **ToDo-Frontend** — die UI zum Modul (in Arbeit)
+- **Priorisierungs-UI** — Werte pro Aufgabe setzen, Sortierung frei kombinieren, und ein „custom"-Modus mit persistenter Drag-Reihenfolge (Backend `position` + Reorder). Als Nächstes.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
-- **Priorisierungs-UI** — Werte pro Aufgabe setzen, Sortierung frei kombinieren, und ein „custom"-Modus mit persistenter Drag-Reihenfolge (Backend `position` + Reorder). Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt) und ein **settings**-Bereich (Theme/Preset etc.). Geplant.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Slice** — Postgres + Backend containerisieren
