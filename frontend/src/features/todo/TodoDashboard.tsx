@@ -3,6 +3,9 @@ import type { ReactNode } from 'react'
 import { useCreateTodo, useProjects, useTags, useTodos, useUpdateTodo } from './hooks'
 import type { Priority, Project, Todo, TodoInput } from './types'
 
+// Which top-level view is shown. dashboard is the (placeholder) start page.
+type View = 'dashboard' | 'todos'
+
 // Which field the list is sorted by, mapped to the backend's ?sort= spec.
 type SortKey = 'priority' | 'effort' | 'deadline'
 const sortSpec: Record<SortKey, string> = {
@@ -43,21 +46,34 @@ const Moon = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-
 const Sun = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" /></svg>
 const Clock = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
 const Cal = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M7 3v4M17 3v4M4 10h16" /></svg>
+const Grid = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></svg>
+const Check = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M5 12.5l4 4L19 7" /></svg>
+
+/** A small round avatar placeholder (auth/account logic comes later). */
+function Avatar({ size = 32 }: { size?: number }) {
+  return (
+    <span className="avatar" style={{ width: size, height: size }} aria-hidden>
+      a
+    </span>
+  )
+}
 
 /**
- * The ToDo dashboard: sidebar (projects + tags), top bar (search + theme),
- * a sort bar, and the task list. Theme is token-driven via data-attributes on
- * <html>. UI copy is lowercase by default; user content (titles, names) is shown
- * as entered.
+ * The pad shell + ToDo module. Sidebar (dashboard/to-dos nav, projects, tags,
+ * account), top bar (search, theme, account), and the selected view. Theme is
+ * token-driven and starts in the OS color scheme. UI copy is lowercase; user
+ * content (titles, names) is shown as entered.
+ *
+ * The theme/preset toggles live in the top bar only for now — they move into a
+ * settings page later. The dashboard is a placeholder until widget config lands.
  */
 export function TodoDashboard() {
   const [preset, setPreset] = useState<'standard' | 'google'>('standard')
   // Start in the visitor's OS color scheme; the toggle overrides it.
   const [mode, setMode] = useState<'light' | 'dark'>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light',
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   )
+  const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
 
   useEffect(() => {
@@ -72,7 +88,6 @@ export function TodoDashboard() {
   const create = useCreateTodo()
   const update = useUpdateTodo()
 
-  // project_id -> project, for showing the project name + dot on each row.
   const projectsById = useMemo(() => {
     const map = new Map<number, Project>()
     for (const p of projects.data ?? []) map.set(p.id, p)
@@ -102,12 +117,15 @@ export function TodoDashboard() {
           <span className="sidebar__tagline">productivity workspace</span>
         </div>
 
-        <QuickAdd onAdd={(title) => create.mutate({ title })} pending={create.isPending} />
-
-        <nav className="nav" aria-label="modules">
-          <button className="nav__item is-active">to-dos</button>
-          <button className="nav__item" disabled>calendar</button>
-          <button className="nav__item" disabled>applications</button>
+        <nav className="nav" aria-label="views">
+          <button className={`nav__item${view === 'dashboard' ? ' is-active' : ''}`} onClick={() => setView('dashboard')}>
+            <Grid /> dashboard
+          </button>
+          <button className={`nav__item${view === 'todos' ? ' is-active' : ''}`} onClick={() => setView('todos')}>
+            <Check /> to-dos
+          </button>
+          <button className="nav__item" disabled><Cal /> calendar</button>
+          <button className="nav__item" disabled><Grid /> applications</button>
         </nav>
 
         <SidebarSection label="projects">
@@ -128,6 +146,14 @@ export function TodoDashboard() {
             {tags.data?.length === 0 && <p className="sidebar__empty">no tags yet</p>}
           </div>
         </SidebarSection>
+
+        <button className="account" type="button">
+          <Avatar />
+          <span className="account__text">
+            <span className="account__name">account</span>
+            <span className="account__sub">local mode</span>
+          </span>
+        </button>
       </aside>
 
       <main className="main">
@@ -137,87 +163,100 @@ export function TodoDashboard() {
             <input placeholder="search tasks, projects…" aria-label="search" />
           </label>
           <div className="topbar__actions">
-            <button
-              className="icon-btn"
-              onClick={() => setPreset((p) => (p === 'standard' ? 'google' : 'standard'))}
-              title={`preset: ${preset}`}
-            >
+            {/* temporary — moves into settings later */}
+            <button className="icon-btn" onClick={() => setPreset((p) => (p === 'standard' ? 'google' : 'standard'))} title={`preset: ${preset}`}>
               {preset === 'standard' ? 'std' : 'goog'}
             </button>
-            <button
-              className="icon-btn"
-              onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))}
-              aria-label="toggle light/dark"
-            >
+            <button className="icon-btn" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
               {mode === 'light' ? <Moon /> : <Sun />}
             </button>
+            <button className="avatar-btn" aria-label="account"><Avatar size={34} /></button>
           </div>
         </header>
 
-        <div className="content">
-          <div className="page-head">
-            <div>
-              <h1 className="page-title">to-dos</h1>
-              <p className="page-sub">
-                {todos.isPending ? 'loading…' : `${openCount} open ${openCount === 1 ? 'task' : 'tasks'}`}
-              </p>
+        {view === 'dashboard' ? (
+          <DashboardView onGoToTodos={() => setView('todos')} />
+        ) : (
+          <div className="content">
+            <div className="page-head">
+              <div>
+                <h1 className="page-title">to-dos</h1>
+                <p className="page-sub">
+                  {todos.isPending ? 'loading…' : `${openCount} open ${openCount === 1 ? 'task' : 'tasks'}`}
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="sortbar">
-            <span className="sortbar__label">sort by</span>
-            {(['priority', 'effort', 'deadline'] as SortKey[]).map((key) => (
-              <button
-                key={key}
-                className={`sort-pill${sort === key ? ' is-active' : ''}`}
-                onClick={() => setSort(key)}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
+            <QuickAdd onAdd={(title) => create.mutate({ title })} pending={create.isPending} />
 
-          {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
-          {todos.data?.length === 0 && <p className="state">no tasks yet — add one above.</p>}
+            <div className="sortbar">
+              <span className="sortbar__label">sort by</span>
+              {(['priority', 'effort', 'deadline'] as SortKey[]).map((key) => (
+                <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
+                  {key}
+                </button>
+              ))}
+            </div>
 
-          <ul className="todo-list">
-            {(todos.data ?? []).map((todo) => {
-              const due = formatDue(todo.due_at)
-              const estimate = formatEstimate(todo.estimate_minutes)
-              const project = todo.project_id != null ? projectsById.get(todo.project_id) : undefined
-              return (
-                <li className={`todo${todo.status === 'done' ? ' is-done' : ''}`} key={todo.id}>
-                  <button
-                    className="todo__check"
-                    role="checkbox"
-                    aria-checked={todo.status === 'done'}
-                    aria-label={todo.status === 'done' ? 'mark open' : 'mark done'}
-                    onClick={() => toggleDone(todo)}
-                  />
-                  <div className="todo__body">
-                    <div className="todo__line">
-                      <span className="todo__title">{todo.title}</span>
-                      {todo.priority !== 0 && (
-                        <span className={`badge badge--p${todo.priority}`}>{priorityLabel[todo.priority]}</span>
-                      )}
+            {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
+            {todos.data?.length === 0 && <p className="state">no tasks yet — add one above.</p>}
+
+            <ul className="todo-list">
+              {(todos.data ?? []).map((todo) => {
+                const due = formatDue(todo.due_at)
+                const estimate = formatEstimate(todo.estimate_minutes)
+                const project = todo.project_id != null ? projectsById.get(todo.project_id) : undefined
+                return (
+                  <li className={`todo${todo.status === 'done' ? ' is-done' : ''}`} key={todo.id}>
+                    <button
+                      className="todo__check"
+                      role="checkbox"
+                      aria-checked={todo.status === 'done'}
+                      aria-label={todo.status === 'done' ? 'mark open' : 'mark done'}
+                      onClick={() => toggleDone(todo)}
+                    />
+                    <div className="todo__body">
+                      <div className="todo__line">
+                        <span className="todo__title">{todo.title}</span>
+                        {todo.priority !== 0 && (
+                          <span className={`badge badge--p${todo.priority}`}>{priorityLabel[todo.priority]}</span>
+                        )}
+                      </div>
+                      <div className="todo__meta">
+                        {project && (
+                          <span className="meta">
+                            <span className="project__dot" style={{ background: project.color || 'var(--color-text-secondary)' }} />
+                            {project.name}
+                          </span>
+                        )}
+                        {estimate && <span className="meta"><Clock /> {estimate}</span>}
+                        {due && <span className={`meta${due.overdue ? ' meta--overdue' : ''}`}><Cal /> {due.label}</span>}
+                      </div>
                     </div>
-                    <div className="todo__meta">
-                      {project && (
-                        <span className="meta">
-                          <span className="project__dot" style={{ background: project.color || 'var(--color-text-secondary)' }} />
-                          {project.name}
-                        </span>
-                      )}
-                      {estimate && <span className="meta"><Clock /> {estimate}</span>}
-                      {due && <span className={`meta${due.overdue ? ' meta--overdue' : ''}`}><Cal /> {due.label}</span>}
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
       </main>
+    </div>
+  )
+}
+
+/** Placeholder start page. Real configurable widgets land in a later slice. */
+function DashboardView({ onGoToTodos }: { onGoToTodos: () => void }) {
+  return (
+    <div className="content">
+      <div className="page-head">
+        <h1 className="page-title">dashboard</h1>
+        <p className="page-sub">your overview at a glance.</p>
+      </div>
+      <div className="dash-placeholder">
+        <Grid />
+        <p>configurable widgets are coming here — pick what shows up where (to-dos, calendar, …).</p>
+        <button className="btn" onClick={onGoToTodos}>open to-dos</button>
+      </div>
     </div>
   )
 }
@@ -247,13 +286,7 @@ function QuickAdd({ onAdd, pending }: { onAdd: (title: string) => void; pending:
       }}
     >
       <span className="quick-add__icon"><Plus /></span>
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="new task…"
-        aria-label="new task"
-        disabled={pending}
-      />
+      <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="new task…" aria-label="new task" disabled={pending} />
     </form>
   )
 }

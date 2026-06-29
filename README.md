@@ -75,6 +75,9 @@ Voraussetzungen: Go 1.26, Node 22, PostgreSQL.
 
 ### WIP / ToDo
 - **ToDo-Frontend** — die UI zum Modul (in Arbeit)
+- **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
+- **Priorisierungs-UI** — Werte pro Aufgabe setzen, Sortierung frei kombinieren, und ein „custom"-Modus mit persistenter Drag-Reihenfolge (Backend `position` + Reorder). Geplant.
+- **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt) und ein **settings**-Bereich (Theme/Preset etc.). Geplant.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Slice** — Postgres + Backend containerisieren
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home
