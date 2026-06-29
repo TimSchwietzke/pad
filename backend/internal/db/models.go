@@ -21,6 +21,7 @@ type Todo struct {
 	CreatedAt       time.Time     `json:"created_at"`
 	UpdatedAt       time.Time     `json:"updated_at"`
 	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
+	Position        int64         `json:"position"`
 }
 
 type TodoProject struct {

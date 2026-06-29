@@ -27,8 +27,10 @@ WHERE id = $1 AND user_id = $2;
 -- Todos --------------------------------------------------------------------
 
 -- name: CreateTodo :one
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+-- New todos append to the end of the user's custom order (max position + 1).
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+        COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
 RETURNING *;
 
 -- name: GetTodo :one
@@ -47,6 +49,13 @@ RETURNING *;
 -- name: DeleteTodo :exec
 DELETE FROM todos
 WHERE id = $1 AND user_id = $2;
+
+-- name: SetTodoPosition :execrows
+-- Used by the reorder endpoint inside a transaction. Scoped by user_id, so a
+-- foreign id touches no rows (the handler treats 0 affected rows as not-owned).
+UPDATE todos
+SET position = $1, updated_at = now()
+WHERE id = $2 AND user_id = $3;
 
 -- Tags ---------------------------------------------------------------------
 
