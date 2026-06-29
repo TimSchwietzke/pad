@@ -111,24 +111,34 @@ export function TodoDashboard() {
   const update = useUpdateTodo()
   const reorder = useReorderTodos()
 
-  // Drag-to-reorder is only active in the "custom" sort. dragId is the row being
-  // dragged, overId the row it's hovering, so we can show a drop indicator.
+  // Drag-to-reorder works from any sort. dragId is the row being dragged, overId
+  // the row it's hovering, so we can show a drop indicator.
   const isCustom = sort === 'custom'
   const [dragId, setDragId] = useState<number | null>(null)
   const [overId, setOverId] = useState<number | null>(null)
 
-  /** Moves the dragged todo to the drop target's slot and persists the new order. */
+  /**
+   * Moves the dragged todo to the drop target's slot. Starting from whatever order
+   * is on screen, the result is saved as the manual order and the view switches to
+   * "custom" — so a drag from any sort just becomes the custom arrangement.
+   */
   const dropOn = (targetId: number) => {
     setOverId(null)
-    if (dragId === null || dragId === targetId) return
-    const ids = (todos.data ?? []).map((t) => t.id)
-    const from = ids.indexOf(dragId)
-    const to = ids.indexOf(targetId)
+    const dragged = dragId
     setDragId(null)
+    if (dragged === null || dragged === targetId) return
+
+    const current = todos.data ?? []
+    const from = current.findIndex((t) => t.id === dragged)
+    const to = current.findIndex((t) => t.id === targetId)
     if (from === -1 || to === -1) return
-    ids.splice(from, 1)
-    ids.splice(to, 0, dragId)
-    reorder.mutate(ids)
+
+    const next = [...current]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+
+    reorder.mutate(next) // seeds the custom-order cache + persists
+    if (sort !== 'custom') setSort('custom')
   }
 
   const projectsById = useMemo(() => {
@@ -281,14 +291,14 @@ export function TodoDashboard() {
                   <li
                     className={cls}
                     key={todo.id}
-                    draggable={isCustom}
+                    draggable
                     onDragStart={() => setDragId(todo.id)}
                     onDragEnd={() => {
                       setDragId(null)
                       setOverId(null)
                     }}
                     onDragOver={(e) => {
-                      if (isCustom && dragId !== null) {
+                      if (dragId !== null) {
                         e.preventDefault()
                         if (overId !== todo.id) setOverId(todo.id)
                       }

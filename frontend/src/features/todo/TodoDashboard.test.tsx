@@ -114,7 +114,7 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(requestedSorts()).toContain('due'))
   })
 
-  it('reorders tasks by drag in the custom sort', async () => {
+  it('drag reorders from the current view and saves it as the custom order', async () => {
     resetDb({
       todos: [
         makeTodo({ id: 1, title: 'a', position: 0 }),
@@ -125,10 +125,9 @@ describe('TodoDashboard', () => {
     const user = userEvent.setup()
     const { container } = renderWithClient(<TodoDashboard />)
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
-    await user.click(screen.getByRole('button', { name: 'custom' }))
-    await waitFor(() => expect(requestedSorts()).toContain('position'))
 
     const titles = () => [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    // Default (priority) view — no custom tab clicked first.
     await waitFor(() => expect(titles()).toEqual(['a', 'b', 'c']))
 
     // Drag the last row (c) onto the first (a): order becomes c, a, b.
@@ -138,6 +137,9 @@ describe('TodoDashboard', () => {
     fireEvent.drop(rows[0])
 
     await waitFor(() => expect(titles()).toEqual(['c', 'a', 'b']))
+    // Dragging switched the active sort to custom and persisted the order.
+    expect(container.querySelector('.todo-list--custom')).toBeTruthy()
+    await waitFor(() => expect(requestedSorts()).toContain('position'))
   })
 
   it('shows an error state when the list fails to load', async () => {

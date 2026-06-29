@@ -47,27 +47,24 @@ export function useUpdateTodo() {
 }
 
 /**
- * Persists the manual "custom" order. The reorder only affects the position-sorted
- * list, so we optimistically rewrite that cache to the new order before the request
- * lands — the drag feels instant — then roll back on error and refetch to confirm.
+ * Saves a manual order. Dragging works from any sort: the caller passes the full
+ * list in its new order, we seed the "custom" (position) cache with it so switching
+ * to custom shows the move instantly, then persist the ids. Rolls back on error and
+ * refetches to confirm.
  */
 export function useReorderTodos() {
   const qc = useQueryClient()
   const key = keys.todoList('position')
   return useMutation({
-    mutationFn: (ids: number[]) => todoApi.reorderTodos(ids),
-    onMutate: async (ids: number[]) => {
+    mutationFn: (ordered: Todo[]) => todoApi.reorderTodos(ordered.map((t) => t.id)),
+    onMutate: async (ordered: Todo[]) => {
       await qc.cancelQueries({ queryKey: key })
       const prev = qc.getQueryData<Todo[]>(key)
-      if (prev) {
-        const byId = new Map(prev.map((t) => [t.id, t]))
-        const next = ids.map((id) => byId.get(id)).filter((t): t is Todo => t != null)
-        qc.setQueryData(key, next)
-      }
+      qc.setQueryData(key, ordered)
       return { prev }
     },
-    onError: (_err, _ids, ctx) => {
-      if (ctx?.prev) qc.setQueryData(key, ctx.prev)
+    onError: (_err, _ordered, ctx) => {
+      qc.setQueryData(key, ctx?.prev)
     },
     onSettled: () => qc.invalidateQueries({ queryKey: keys.todos }),
   })

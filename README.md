@@ -91,7 +91,7 @@ Ein späterer Dienst wird als `dev:<name>`-Script ergänzt und an die `dev`-Zeil
 - **Dev-Orchestrator:** `npm run dev` startet Backend + Frontend mit einem Befehl (Root-`package.json` + `concurrently`); dazu `check` / `test` / `verify`
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
-- **Custom-Reihenfolge:** „custom"-Sortmodus mit Drag-and-drop; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
+- **Custom-Reihenfolge:** Aufgaben aus **jeder** Sortierung per Drag-and-drop umordnen — die Anordnung wird automatisch als „custom"-Reihenfolge gespeichert und angezeigt; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
 
 ### WIP / ToDo
 - **Aufgaben-Parameter setzen** — Projekt, Deadline, Priorität, Aufwand und Tags pro Aufgabe in der GUI setzen (Idee: kleines Popup auf „c"/Klick); UI/UX noch offen. Als Nächstes.
