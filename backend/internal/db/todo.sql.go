@@ -76,9 +76,10 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (TodoTag, 
 
 const createTodo = `-- name: CreateTodo :one
 
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+        COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position
 `
 
 type CreateTodoParams struct {
@@ -93,6 +94,7 @@ type CreateTodoParams struct {
 }
 
 // Todos --------------------------------------------------------------------
+// New todos append to the end of the user's custom order (max position + 1).
 func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, error) {
 	row := q.db.QueryRowContext(ctx, createTodo,
 		arg.UserID,
@@ -117,6 +119,7 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
+		&i.Position,
 	)
 	return i, err
 }
@@ -208,7 +211,7 @@ func (q *Queries) GetTag(ctx context.Context, arg GetTagParams) (TodoTag, error)
 }
 
 const getTodo = `-- name: GetTodo :one
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes FROM todos
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position FROM todos
 WHERE id = $1 AND user_id = $2
 `
 
@@ -232,6 +235,7 @@ func (q *Queries) GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
+		&i.Position,
 	)
 	return i, err
 }
@@ -346,6 +350,28 @@ func (q *Queries) RemoveTagFromTodo(ctx context.Context, arg RemoveTagFromTodoPa
 	return err
 }
 
+const setTodoPosition = `-- name: SetTodoPosition :execrows
+UPDATE todos
+SET position = $1, updated_at = now()
+WHERE id = $2 AND user_id = $3
+`
+
+type SetTodoPositionParams struct {
+	Position int64 `json:"position"`
+	ID       int64 `json:"id"`
+	UserID   int64 `json:"user_id"`
+}
+
+// Used by the reorder endpoint inside a transaction. Scoped by user_id, so a
+// foreign id touches no rows (the handler treats 0 affected rows as not-owned).
+func (q *Queries) SetTodoPosition(ctx context.Context, arg SetTodoPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTodoPosition, arg.Position, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE todo_projects
 SET name = $1, color = $2, updated_at = now()
@@ -384,7 +410,7 @@ const updateTodo = `-- name: UpdateTodo :one
 UPDATE todos
 SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7, updated_at = now()
 WHERE id = $8 AND user_id = $9
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position
 `
 
 type UpdateTodoParams struct {
@@ -426,6 +452,7 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
+		&i.Position,
 	)
 	return i, err
 }

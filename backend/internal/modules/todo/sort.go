@@ -23,6 +23,7 @@ var sortColumns = map[string]string{
 	"created":  "created_at",
 	"updated":  "updated_at",
 	"title":    "title",
+	"position": "position", // the manual "custom" order (drag-to-reorder)
 }
 
 // nullableColumns get NULLS LAST so todos without a due date or estimate sink to

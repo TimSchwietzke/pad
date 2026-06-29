@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TodoDashboard } from './TodoDashboard'
 import type { Todo } from './types'
@@ -18,6 +18,7 @@ function makeTodo(over: Partial<Todo> = {}): Todo {
     status: 'open',
     due_at: null,
     estimate_minutes: null,
+    position: 0,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
     ...over,
@@ -111,6 +112,34 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(requestedSorts()).toContain('-priority'))
     await user.click(screen.getByRole('button', { name: 'deadline' }))
     await waitFor(() => expect(requestedSorts()).toContain('due'))
+  })
+
+  it('drag reorders from the current view and saves it as the custom order', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'a', position: 0 }),
+        makeTodo({ id: 2, title: 'b', position: 1 }),
+        makeTodo({ id: 3, title: 'c', position: 2 }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+
+    const titles = () => [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    // Default (priority) view — no custom tab clicked first.
+    await waitFor(() => expect(titles()).toEqual(['a', 'b', 'c']))
+
+    // Drag the last row (c) onto the first (a): order becomes c, a, b.
+    const rows = container.querySelectorAll('.todo')
+    fireEvent.dragStart(rows[2])
+    fireEvent.dragOver(rows[0])
+    fireEvent.drop(rows[0])
+
+    await waitFor(() => expect(titles()).toEqual(['c', 'a', 'b']))
+    // Dragging switched the active sort to custom and persisted the order.
+    expect(container.querySelector('.todo-list--custom')).toBeTruthy()
+    await waitFor(() => expect(requestedSorts()).toContain('position'))
   })
 
   it('shows an error state when the list fails to load', async () => {

@@ -42,11 +42,18 @@ export const handlers = [
   http.get('/api/todo/todos', ({ request }) => {
     const sort = new URL(request.url).searchParams.get('sort')
     if (sort) db.requestedSorts.push(sort)
-    return HttpResponse.json(db.todos)
+    // The custom mode asks for position order; everything else keeps insertion order
+    // (backend sorting itself is covered by Go tests).
+    const todos =
+      sort === 'position'
+        ? [...db.todos].sort((a, b) => a.position - b.position || a.id - b.id)
+        : db.todos
+    return HttpResponse.json(todos)
   }),
 
   http.post('/api/todo/todos', async ({ request }) => {
     const input = (await request.json()) as TodoInput
+    const maxPos = db.todos.reduce((max, t) => Math.max(max, t.position), -1)
     const todo: Todo = {
       id: db.seq++,
       project_id: input.project_id ?? null,
@@ -56,11 +63,21 @@ export const handlers = [
       status: input.status ?? 'open',
       due_at: input.due_at ?? null,
       estimate_minutes: input.estimate_minutes ?? null,
+      position: maxPos + 1, // append to the end of the custom order
       created_at: now(),
       updated_at: now(),
     }
     db.todos = [...db.todos, todo]
     return HttpResponse.json(todo, { status: 201 })
+  }),
+
+  http.put('/api/todo/todos/reorder', async ({ request }) => {
+    const { ids } = (await request.json()) as { ids: number[] }
+    ids.forEach((id, i) => {
+      const todo = db.todos.find((t) => t.id === id)
+      if (todo) todo.position = i
+    })
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.put('/api/todo/todos/:id', async ({ request, params }) => {

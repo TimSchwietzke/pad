@@ -32,8 +32,10 @@ type todoResponse struct {
 	Status          string     `json:"status"`
 	DueAt           *time.Time `json:"due_at"`
 	EstimateMinutes *int32     `json:"estimate_minutes"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// Position is the rank in the user's manual "custom" order (see sort.go).
+	Position  int64     `json:"position"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func toTodoResponse(t db.Todo) todoResponse {
@@ -46,6 +48,7 @@ func toTodoResponse(t db.Todo) todoResponse {
 		Status:          t.Status,
 		DueAt:           timePtr(t.DueAt),
 		EstimateMinutes: int32Ptr(t.EstimateMinutes),
+		Position:        t.Position,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 	}
@@ -108,7 +111,7 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, created_at, updated_at`
+	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position, created_at, updated_at`
 	query := `SELECT ` + cols + ` FROM todos WHERE user_id = $1 ORDER BY ` + orderClause(terms)
 
 	rows, err := m.db.QueryContext(r.Context(), query, userID(r))
@@ -123,7 +126,7 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		var t db.Todo
 		if err := rows.Scan(
 			&t.ID, &t.UserID, &t.ProjectID, &t.Title, &t.Notes, &t.Priority,
-			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.CreatedAt, &t.UpdatedAt,
+			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.Position, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
 			httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
 			return
@@ -240,6 +243,67 @@ func (m *Module) deleteTodo(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := m.q.DeleteTodo(r.Context(), db.DeleteTodoParams{ID: id, UserID: userID(r)}); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not delete todo")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reorderRequest is the body for the reorder endpoint: the user's todo ids in
+// the exact order they should take in the custom view.
+type reorderRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+// reorderTodos rewrites the manual "custom" order. It assigns position 0..N-1 to
+// the given ids, in order, inside a single transaction so the list never ends up
+// half-renumbered. Every id is scoped to the user; an id that isn't theirs (or
+// doesn't exist) touches no rows and yields a 404 with the whole change rolled
+// back. Duplicate ids are rejected up front.
+func (m *Module) reorderTodos(w http.ResponseWriter, r *http.Request) {
+	var body reorderRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if len(body.IDs) == 0 {
+		httputil.Error(w, http.StatusBadRequest, "validation", "ids is required")
+		return
+	}
+	seen := make(map[int64]struct{}, len(body.IDs))
+	for _, id := range body.IDs {
+		if _, dup := seen[id]; dup {
+			httputil.Error(w, http.StatusBadRequest, "validation", "ids must be unique")
+			return
+		}
+		seen[id] = struct{}{}
+	}
+
+	uid := userID(r)
+	tx, err := m.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not reorder todos")
+		return
+	}
+	defer tx.Rollback() // no-op once committed
+
+	qtx := m.q.WithTx(tx)
+	for i, id := range body.IDs {
+		n, err := qtx.SetTodoPosition(r.Context(), db.SetTodoPositionParams{
+			Position: int64(i),
+			ID:       id,
+			UserID:   uid,
+		})
+		if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, "db_error", "could not reorder todos")
+			return
+		}
+		if n == 0 {
+			// Not the user's todo (or gone) — reject the whole batch.
+			httputil.Error(w, http.StatusNotFound, "not_found", "todo not found")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not reorder todos")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

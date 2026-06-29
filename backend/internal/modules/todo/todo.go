@@ -49,6 +49,8 @@ func (m *Module) RegisterRoutes(r chi.Router, deps module.Deps) {
 		t.Route("/todos", func(td chi.Router) {
 			td.Get("/", m.listTodos)
 			td.Post("/", m.createTodo)
+			// Static segment — chi matches it before the /{id} routes below.
+			td.Put("/reorder", m.reorderTodos)
 			td.Get("/{id}", m.getTodo)
 			td.Put("/{id}", m.updateTodo)
 			td.Delete("/{id}", m.deleteTodo)

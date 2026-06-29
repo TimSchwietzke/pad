@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { todoApi } from './api'
-import type { ProjectInput, TodoInput } from './types'
+import type { ProjectInput, Todo, TodoInput } from './types'
 
 // Query keys live in one place so mutations can invalidate the right caches.
 const keys = {
@@ -43,6 +43,30 @@ export function useUpdateTodo() {
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: TodoInput }) => todoApi.updateTodo(id, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.todos }),
+  })
+}
+
+/**
+ * Saves a manual order. Dragging works from any sort: the caller passes the full
+ * list in its new order, we seed the "custom" (position) cache with it so switching
+ * to custom shows the move instantly, then persist the ids. Rolls back on error and
+ * refetches to confirm.
+ */
+export function useReorderTodos() {
+  const qc = useQueryClient()
+  const key = keys.todoList('position')
+  return useMutation({
+    mutationFn: (ordered: Todo[]) => todoApi.reorderTodos(ordered.map((t) => t.id)),
+    onMutate: async (ordered: Todo[]) => {
+      await qc.cancelQueries({ queryKey: key })
+      const prev = qc.getQueryData<Todo[]>(key)
+      qc.setQueryData(key, ordered)
+      return { prev }
+    },
+    onError: (_err, _ordered, ctx) => {
+      qc.setQueryData(key, ctx?.prev)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.todos }),
   })
 }
 

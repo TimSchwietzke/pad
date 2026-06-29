@@ -27,6 +27,8 @@ export interface Todo {
   due_at: string | null
   /** Personal effort estimate in minutes, or null. */
   estimate_minutes: number | null
+  /** Rank in the user's manual "custom" order (see the reorder endpoint). */
+  position: number
   created_at: string
   updated_at: string
 }
