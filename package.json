@@ -15,6 +15,7 @@
     "test:frontend": "npm --prefix frontend test -- --passWithNoTests",
     "test:backend": "go -C backend test ./...",
     "verify": "npm run check && npm run test",
+    "license-check": "node scripts/check-licenses.mjs",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f"

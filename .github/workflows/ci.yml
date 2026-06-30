@@ -91,3 +91,23 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  # Fail if any shipped dependency (npm bundle or the compiled Go binary) carries a
+  # copyleft license that would block selling pad as proprietary software. Keeps the
+  # "sellable proprietary" property honest as dependencies change. MPL-2.0 is allowed.
+  license:
+    name: license check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+      - run: npm --prefix frontend ci
+      - run: node scripts/check-licenses.mjs
