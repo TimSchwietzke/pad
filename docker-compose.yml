@@ -20,8 +20,10 @@ services:
       POSTGRES_DB: pad
     ports:
       - "127.0.0.1:5432:5432"
+    # postgres:18 stores data in a major-version subdirectory and wants the mount
+    # at /var/lib/postgresql (NOT /var/lib/postgresql/data, which it now rejects).
     volumes:
-      - pad_pgdata:/var/lib/postgresql/data
+      - pad_pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pad -d pad"]
       interval: 5s
