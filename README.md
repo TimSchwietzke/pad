@@ -134,6 +134,12 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **Weitere Module:** Kalender, Bewerbungen, E-Mail, Projekt-Übersicht, Smart Home
 - **Google-OAuth** (Login + Kalender/Mail-Zugriff) — Pflicht, bevor pad ins Netz geht
 
+## Lizenz
+
+pad ist **proprietär** — © 2026 Tim Schwietzke, alle Rechte vorbehalten. Der Quellcode
+ist öffentlich nur zur **Ansicht/Bewertung** (Portfolio), **nicht** als Open Source; keine
+Nutzungs-, Kopier- oder Weiterverbreitungsrechte ohne ausdrückliche Erlaubnis. Siehe [LICENSE](LICENSE).
+
 ---
 
 > Die Bereiche **Done** und **WIP / ToDo** werden vor jedem PR aktualisiert.
