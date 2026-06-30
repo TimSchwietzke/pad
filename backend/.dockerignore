@@ -1,0 +1,9 @@
+# Keep the build context small and free of local-only / secret files.
+.env
+.env.*
+bin/
+dist/
+data/
+*.exe
+*.test
+*.out

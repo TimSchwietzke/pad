@@ -16,6 +16,7 @@ func TestValidate(t *testing.T) {
 		{"unknown auth mode rejected", Config{Host: "127.0.0.1", AuthMode: "foo", LogFormat: LogText}, true},
 		{"unknown log format rejected", Config{Host: "127.0.0.1", AuthMode: AuthNone, LogFormat: "yaml"}, true},
 		{"none beyond loopback rejected", Config{Host: "0.0.0.0", AuthMode: AuthNone, LogFormat: LogText}, true},
+		{"none beyond loopback allowed with explicit opt-in", Config{Host: "0.0.0.0", AuthMode: AuthNone, LogFormat: LogText, AllowNonloopbackBind: true}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

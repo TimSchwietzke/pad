@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 )
 
 // AuthMode selects how requests are authenticated.
@@ -35,16 +36,22 @@ type Config struct {
 	AuthMode    AuthMode
 	LogFormat   LogFormat
 	DatabaseURL string
+	// AllowNonloopbackBind opts out of the loopback-only bind guard while
+	// AUTH_MODE=none. It exists for running inside a container, where the process
+	// must bind 0.0.0.0 but the published port is meant to be kept on the host's
+	// loopback (see docker-compose.yml + SECURITY.md). Off by default.
+	AllowNonloopbackBind bool
 }
 
 // Load reads configuration from the environment, applying safe defaults.
 func Load() Config {
 	return Config{
-		Host:        getenv("PAD_HOST", "127.0.0.1"),
-		Port:        getenv("PAD_PORT", "8080"),
-		AuthMode:    AuthMode(getenv("AUTH_MODE", string(AuthNone))),
-		LogFormat:   LogFormat(getenv("PAD_LOG_FORMAT", string(LogText))),
-		DatabaseURL: getenv("DATABASE_URL", ""),
+		Host:                 getenv("PAD_HOST", "127.0.0.1"),
+		Port:                 getenv("PAD_PORT", "8080"),
+		AuthMode:             AuthMode(getenv("AUTH_MODE", string(AuthNone))),
+		LogFormat:            LogFormat(getenv("PAD_LOG_FORMAT", string(LogText))),
+		DatabaseURL:          getenv("DATABASE_URL", ""),
+		AllowNonloopbackBind: getenvBool("PAD_ALLOW_NONLOOPBACK_BIND", false),
 	}
 }
 
@@ -66,9 +73,10 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("unknown PAD_LOG_FORMAT %q (want text|json)", c.LogFormat)
 	}
-	if c.AuthMode == AuthNone && !isLoopback(c.Host) {
+	if c.AuthMode == AuthNone && !isLoopback(c.Host) && !c.AllowNonloopbackBind {
 		return fmt.Errorf(
-			"refusing to bind %s with AUTH_MODE=none: set AUTH_MODE=oauth or bind 127.0.0.1 (see SECURITY.md)",
+			"refusing to bind %s with AUTH_MODE=none: set AUTH_MODE=oauth, bind 127.0.0.1, or "+
+				"(container only, loopback-published) PAD_ALLOW_NONLOOPBACK_BIND=1 (see SECURITY.md)",
 			c.Host,
 		)
 	}
@@ -84,6 +92,10 @@ func (c Config) WarnIfInsecure() {
 	}
 	slog.Warn("authentication disabled — local development only, do not expose (see SECURITY.md)",
 		slog.String("auth_mode", string(c.AuthMode)))
+	if c.AllowNonloopbackBind && !isLoopback(c.Host) {
+		slog.Warn("bind guard overridden (PAD_ALLOW_NONLOOPBACK_BIND) — only safe if the published port stays on the host loopback",
+			slog.String("host", c.Host))
+	}
 }
 
 func isLoopback(host string) bool {
@@ -99,4 +111,18 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getenvBool parses a boolean env var (1/0, t/f, true/false). An unset, empty or
+// unparseable value falls back to the default.
+func getenvBool(key string, fallback bool) bool {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
 }
