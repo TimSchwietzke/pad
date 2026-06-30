@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { usePersistentState } from '../../core/usePersistentState'
 import { useCreateTodo, useProjects, useReorderTodos, useTags, useTodos, useUpdateTodo } from './hooks'
 import type { Priority, Project, Todo, TodoInput } from './types'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
-type View = 'dashboard' | 'todos'
+type View = 'dashboard' | 'todos' | 'settings'
+
+type Preset = 'standard' | 'google'
+type Mode = 'light' | 'dark'
 
 // Which field the list is sorted by, mapped to the backend's ?sort= spec.
 // "custom" is the manual drag order (todos.position).
@@ -69,6 +73,7 @@ const Rows = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-
 const Lines = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
 // six-dot drag affordance — a placeholder for the future custom-priority handle
 const Grip = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>
+const Gear = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.7 7.7 0 000-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1L15 2.5h-4l-.4 2.5a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.7 7.7 0 000 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4z" /></svg>
 
 /** A small round avatar placeholder (auth/account logic comes later). */
 function Avatar({ size = 32 }: { size?: number }) {
@@ -89,14 +94,15 @@ function Avatar({ size = 32 }: { size?: number }) {
  * settings page later. The dashboard is a placeholder until widget config lands.
  */
 export function TodoDashboard() {
-  const [preset, setPreset] = useState<'standard' | 'google'>('standard')
-  // Start in the visitor's OS color scheme; the toggle overrides it.
-  const [mode, setMode] = useState<'light' | 'dark'>(() =>
+  // Device-level preferences, persisted in localStorage (see settings view).
+  const [preset, setPreset] = usePersistentState<Preset>('pad.preset', 'standard')
+  // Default to the visitor's OS color scheme until they pick one.
+  const [mode, setMode] = usePersistentState<Mode>('pad.mode', () =>
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   )
+  const [density, setDensity] = usePersistentState<Density>('pad.density', 'comfortable')
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
-  const [density, setDensity] = useState<Density>('comfortable')
 
   useEffect(() => {
     const root = document.documentElement
@@ -200,13 +206,21 @@ export function TodoDashboard() {
           </div>
         </SidebarSection>
 
-        <button className="account" type="button">
-          <Avatar />
-          <span className="account__text">
-            <span className="account__name">account</span>
-            <span className="account__sub">local mode</span>
-          </span>
-        </button>
+        <div className="sidebar__footer">
+          <button
+            className={`nav__item${view === 'settings' ? ' is-active' : ''}`}
+            onClick={() => setView('settings')}
+          >
+            <Gear /> settings
+          </button>
+          <button className="account" type="button">
+            <Avatar />
+            <span className="account__text">
+              <span className="account__name">account</span>
+              <span className="account__sub">local mode</span>
+            </span>
+          </button>
+        </div>
       </aside>
 
       <main className="main">
@@ -216,10 +230,7 @@ export function TodoDashboard() {
             <input placeholder="search tasks, projects…" aria-label="search" />
           </label>
           <div className="topbar__actions">
-            {/* temporary — moves into settings later */}
-            <button className="icon-btn" onClick={() => setPreset((p) => (p === 'standard' ? 'google' : 'standard'))} title={`preset: ${preset}`}>
-              {preset === 'standard' ? 'std' : 'goog'}
-            </button>
+            {/* preset lives in settings now; light/dark stays a quick top-bar toggle */}
             <button className="icon-btn" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
               {mode === 'light' ? <Moon /> : <Sun />}
             </button>
@@ -232,6 +243,15 @@ export function TodoDashboard() {
 
         {view === 'dashboard' ? (
           <DashboardView onGoToTodos={() => setView('todos')} />
+        ) : view === 'settings' ? (
+          <SettingsView
+            preset={preset}
+            setPreset={setPreset}
+            mode={mode}
+            setMode={setMode}
+            density={density}
+            setDensity={setDensity}
+          />
         ) : (
           <div className="content">
             <div className="page-head page-head--row">
@@ -361,6 +381,90 @@ function DashboardView({ onGoToTodos }: { onGoToTodos: () => void }) {
         <p>configurable widgets are coming here — pick what shows up where (to-dos, calendar, …).</p>
         <button className="btn" onClick={onGoToTodos}>open to-dos</button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Device-level appearance settings. The preset switch lives here (it left the top
+ * bar); light/dark also stays a quick top-bar toggle. All of these persist in
+ * localStorage, so they're per device until real accounts arrive.
+ */
+function SettingsView({
+  preset,
+  setPreset,
+  mode,
+  setMode,
+  density,
+  setDensity,
+}: {
+  preset: Preset
+  setPreset: (v: Preset) => void
+  mode: Mode
+  setMode: (v: Mode) => void
+  density: Density
+  setDensity: (v: Density) => void
+}) {
+  return (
+    <div className="content">
+      <div className="page-head">
+        <h1 className="page-title">settings</h1>
+        <p className="page-sub">appearance and preferences for this device</p>
+      </div>
+
+      <section className="settings-group">
+        <h2 className="settings-group__title">appearance</h2>
+        <SettingRow label="preset" hint="overall look of the app">
+          <OptionGroup value={preset} options={['standard', 'google']} onChange={setPreset} />
+        </SettingRow>
+        <SettingRow label="mode" hint="light or dark — also in the top bar">
+          <OptionGroup value={mode} options={['light', 'dark']} onChange={setMode} />
+        </SettingRow>
+        <SettingRow label="list density" hint="default spacing for the to-do list">
+          <OptionGroup value={density} options={['comfortable', 'compact']} onChange={setDensity} />
+        </SettingRow>
+      </section>
+
+      <p className="settings-note">preferences are saved on this device.</p>
+    </div>
+  )
+}
+
+/** A labelled settings row: text on the left, control on the right. */
+function SettingRow({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row__text">
+        <span className="settings-row__label">{label}</span>
+        <span className="settings-row__hint">{hint}</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** A small segmented control of mutually exclusive text options. */
+function OptionGroup<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: T[]
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="opt-group" role="group">
+      {options.map((opt) => (
+        <button
+          key={opt}
+          className={`opt${value === opt ? ' is-active' : ''}`}
+          aria-pressed={value === opt}
+          onClick={() => onChange(opt)}
+        >
+          {opt}
+        </button>
+      ))}
     </div>
   )
 }
