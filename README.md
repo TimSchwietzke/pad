@@ -114,7 +114,7 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **Logging:** strukturiert via slog, `text`/`json` über `PAD_LOG_FORMAT`, plus Request-Logging
 - **CI** (GitHub Actions) + Tests fürs Core und gegen echtes Postgres, Frontend via Vitest + Testing Library + MSW
 - **Dev-Orchestrator:** `npm run dev` startet Backend + Frontend mit einem Befehl (Root-`package.json` + `concurrently`); dazu `check` / `test` / `verify`
-- **Docker:** `docker compose up` startet PostgreSQL + Backend (Multi-Stage-Image, non-root, Healthchecks, persistentes Volume); Ports nur auf Host-Loopback veröffentlicht
+- **Docker:** `docker compose up` startet PostgreSQL + Backend (Multi-Stage-Image, non-root, Healthchecks, persistentes Volume); Ports nur auf Host-Loopback veröffentlicht. CI baut das Image und smoke-testet `/api/health`, damit das Rezept nicht unbemerkt verrottet
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 - **Custom-Reihenfolge:** Aufgaben aus **jeder** Sortierung per Drag-and-drop umordnen — die Anordnung wird automatisch als „custom"-Reihenfolge gespeichert und angezeigt; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
