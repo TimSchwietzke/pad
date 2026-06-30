@@ -142,6 +142,26 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(requestedSorts()).toContain('position'))
   })
 
+  it('changes the preset from the settings view and persists it', async () => {
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'settings' }))
+
+    expect(document.documentElement.dataset.preset).toBe('standard')
+    await user.click(screen.getByRole('button', { name: 'google' }))
+
+    expect(document.documentElement.dataset.preset).toBe('google')
+    expect(JSON.parse(localStorage.getItem('pad.preset')!)).toBe('google')
+  })
+
+  it('moved the preset toggle out of the top bar', async () => {
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    // the old std/goog top-bar toggle is gone; preset lives in settings now
+    expect(screen.queryByRole('button', { name: /^(std|goog)$/ })).not.toBeInTheDocument()
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>

@@ -25,5 +25,6 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   cleanup()
+  localStorage.clear() // isolate persisted preferences between tests
 })
 afterAll(() => server.close())

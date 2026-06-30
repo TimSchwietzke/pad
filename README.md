@@ -118,6 +118,7 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **ToDo-Modul (Backend):** Projekte, Todos und Tags — CRUD, Verknüpfungen, **flexible Sortierung** (Priorität/Aufwand/Deadline) + Aufwandsschätzung, voll getestet
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 - **Custom-Reihenfolge:** Aufgaben aus **jeder** Sortierung per Drag-and-drop umordnen — die Anordnung wird automatisch als „custom"-Reihenfolge gespeichert und angezeigt; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
+- **settings:** eigener Bereich fürs Erscheinungsbild — Preset (Standard/Google), hell/dunkel und Standard-Listendichte; geräteweit in localStorage gespeichert. Preset aus der Topbar hierher verschoben, hell/dunkel-Toggle bleibt oben
 
 ### WIP / ToDo
 - **Aufgaben-Parameter setzen** — Projekt, Deadline, Priorität, Aufwand und Tags pro Aufgabe in der GUI setzen (Idee: kleines Popup auf „c"/Klick); UI/UX noch offen. Als Nächstes.
@@ -126,7 +127,7 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
 - **Listen-Gruppierung** — Liste in Unterlisten teilen (pro Projekt oder pro Zeitraum: heute/Woche/Monat, anpassbar). Geplant.
 - **Filter-Panel** — auswählen, was angezeigt wird; ein- und ausklappbares Panel statt fester Leiste. Geplant.
-- **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt) und ein **settings**-Bereich (Theme/Preset etc.). Geplant.
+- **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
 - **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
 - **Docker-Folgeschritte** — Frontend-Container / Tauri-Verpackung
