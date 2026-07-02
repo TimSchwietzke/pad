@@ -482,6 +482,22 @@ input {
 .todo.is-drop-target {
   box-shadow: inset 0 2px 0 var(--color-primary);
 }
+/* a just-created task flashes once as it lands in its sorted spot */
+.todo.is-new {
+  animation: todo-flash 2s var(--ease-out);
+}
+@keyframes todo-flash {
+  from {
+    background: var(--color-primary-bg);
+    border-color: var(--color-primary);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .todo.is-new,
+  .popover {
+    animation: none;
+  }
+}
 
 /* density: compact tightens rows so more tasks fit on screen */
 .todo-list--compact {
@@ -490,46 +506,155 @@ input {
 .todo-list--compact .todo {
   padding: 8px 16px;
 }
-.todo-list--compact .todo__meta {
-  margin-top: 3px;
-}
-.todo-list--compact .meta {
-  font-size: 0.76rem;
-}
-.todo__meta {
+/* inline param fields on each row */
+.todo__params {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  align-items: center;
+  gap: 6px;
   margin-top: 6px;
+  margin-left: -9px; /* pull the first chip back to the title's edge */
 }
-.meta {
+.todo-list--compact .todo__params {
+  margin-top: 3px;
+}
+/* empty (unset) chips stay hidden until the row is hovered/focused — or the chip's
+   own menu is open (so picking a value doesn't make the trigger vanish). */
+.todo:not(:hover):not(:focus-within) .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
+  display: none;
+}
+/* compact mode keeps the list quiet: unset chips never show */
+.todo-list--compact .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
+  display: none;
+}
+
+/* ---------- param chips + field menus ---------- */
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  max-width: 14rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 2px 9px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+.chip:hover,
+.chip[aria-expanded='true'] {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+}
+.chip.is-set {
+  border-color: var(--color-border);
+}
+.chip.is-set.is-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger-bg);
+}
+.chip__icon {
+  display: inline-flex;
+}
+.chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+.popover {
+  position: fixed;
+  z-index: var(--z-popover);
+  min-width: 168px;
+  max-width: 264px;
+  padding: 4px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  animation: pop-in var(--motion-fast) var(--ease-out);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.menu {
+  display: flex;
+  flex-direction: column;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--color-bg-surface-2);
+  outline: none;
+}
+.menu-item.is-active {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+.menu-item__muted {
+  color: var(--color-text-secondary);
+}
+.menu-empty {
+  margin: 0;
+  padding: 7px 10px;
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
-.meta--overdue {
-  color: var(--color-danger);
+.menu-input {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
 }
-
-.badge {
-  font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: var(--radius-badge);
-  font-weight: 500;
-}
-.badge--p1 {
+.menu-input input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface-2);
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  outline: none;
 }
-.badge--p2 {
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
+.menu-input input:focus-visible {
+  box-shadow: var(--focus-ring);
 }
-.badge--p3 {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
+.menu-input__apply {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  padding: 0 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
 .state {
@@ -540,19 +665,30 @@ input {
   color: var(--color-danger);
 }
 
-/* ---------- create tile (dashed CTA below the list) ---------- */
+/* ---------- create bar (sticky dashed row, shaped like a task row) ---------- */
+.create-bar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  /* opaque backing so the list doesn't show through the sticky row */
+  background: var(--color-bg-app);
+  padding-bottom: 10px;
+}
+/* Same anatomy as a .todo row (title line + param line, same paddings) but dashed
+   and without a checkbox. The param line always reserves its space (see .is-ghost),
+   so the row's height never changes between resting and editing. */
 .create-tile {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   width: 100%;
-  margin-top: 10px;
   padding: 14px 16px;
-  border: 1.5px dashed var(--color-border);
+  border: 2px dashed var(--color-border);
   border-radius: var(--radius-card);
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   text-align: left;
   cursor: pointer;
   transition: border-color var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
@@ -563,11 +699,28 @@ input {
   color: var(--color-text-primary);
   background: var(--color-bg-surface);
 }
+/* editing keeps the dashed identity, just switches to the accent + a surface */
 .create-tile.is-editing {
-  border-style: solid;
   border-color: var(--color-primary);
   background: var(--color-bg-surface);
-  cursor: text;
+  cursor: default;
+}
+.create-tile__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px; /* keeps the title line the same height with a span or an input */
+}
+.create-tile__params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* first chip aligns under the title text (18px icon + 10px gap − 9px chip padding) */
+  padding-left: 19px;
+}
+/* resting state: the param line is invisible but still holds its height */
+.create-tile__params.is-ghost {
+  visibility: hidden;
 }
 .create-tile input {
   flex: 1;

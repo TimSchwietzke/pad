@@ -24,6 +24,11 @@
   /* keyboard focus ring — drawn with the brand color, used app-wide */
   --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--color-primary);
 
+  /* semantic z-index scale (sticky < dropdown < popover) */
+  --z-sticky: 10;
+  --z-dropdown: 30;
+  --z-popover: 40;
+
   /* preset "Standard" — semantic component tokens */
   --font-family-base: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --radius-button: var(--radius-sm);
