@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TodoDashboard } from './TodoDashboard'
 import type { Todo } from './types'
@@ -55,7 +55,7 @@ describe('TodoDashboard', () => {
     const user = userEvent.setup()
     await openTodos(user)
 
-    expect(await screen.findByRole('button', { name: /click to create a new task/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /create a task/i })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('new task…')).not.toBeInTheDocument()
   })
 
@@ -63,7 +63,7 @@ describe('TodoDashboard', () => {
     const user = userEvent.setup()
     await openTodos(user)
 
-    await user.click(await screen.findByRole('button', { name: /click to create a new task/i }))
+    await user.click(await screen.findByRole('button', { name: /create a task/i }))
     await user.type(screen.getByLabelText('new task title'), 'buy milk{Enter}')
 
     expect(await screen.findByText('buy milk')).toBeInTheDocument()
@@ -73,7 +73,7 @@ describe('TodoDashboard', () => {
   it('opens the create input with the "c" shortcut', async () => {
     const user = userEvent.setup()
     await openTodos(user)
-    await screen.findByRole('button', { name: /click to create a new task/i })
+    await screen.findByRole('button', { name: /create a task/i })
 
     expect(screen.queryByLabelText('new task title')).not.toBeInTheDocument()
     await user.keyboard('c')
@@ -160,6 +160,32 @@ describe('TodoDashboard', () => {
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     // the old std/goog top-bar toggle is gone; preset lives in settings now
     expect(screen.queryByRole('button', { name: /^(std|goog)$/ })).not.toBeInTheDocument()
+  })
+
+  it('sets a param (priority) from the chip menu while creating', async () => {
+    const user = userEvent.setup()
+    await openTodos(user)
+    await user.click(await screen.findByRole('button', { name: /create a task/i }))
+
+    await user.click(screen.getByRole('button', { name: 'set priority' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'high' }))
+
+    await user.type(screen.getByLabelText('new task title'), 'ship it{Enter}')
+
+    const row = (await screen.findByText('ship it')).closest('.todo') as HTMLElement
+    expect(within(row).getByText('high')).toBeInTheDocument()
+  })
+
+  it('edits a task param (priority) inline and optimistically', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha', priority: 0 })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('alpha')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set priority' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'medium' }))
+
+    expect(await within(row).findByText('medium')).toBeInTheDocument()
   })
 
   it('shows an error state when the list fails to load', async () => {

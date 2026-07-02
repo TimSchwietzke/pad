@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { usePersistentState } from '../../core/usePersistentState'
 import { useCreateTodo, useProjects, useReorderTodos, useTags, useTodos, useUpdateTodo } from './hooks'
 import type { Priority, Project, Todo, TodoInput } from './types'
+import { DueField, EffortField, PriorityField, ProjectField } from './ParamFields'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
 type View = 'dashboard' | 'todos' | 'settings'
@@ -24,30 +25,6 @@ const sortSpec: Record<SortKey, string> = {
 // compact tightens rows so more fits on screen.
 type Density = 'comfortable' | 'compact'
 
-const priorityLabel: Record<Exclude<Priority, 0>, string> = { 1: 'low', 2: 'medium', 3: 'high' }
-
-/** Formats an effort estimate in minutes, e.g. 45 -> "45 min", 90 -> "1 h 30 min". */
-function formatEstimate(min: number | null): string | null {
-  if (min == null) return null
-  if (min < 60) return `${min} min`
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return m === 0 ? `${h} h` : `${h} h ${m} min`
-}
-
-/** Formats a due date relative to today, lowercased ("today", "tomorrow", "12 oct"). */
-function formatDue(iso: string | null): { label: string; overdue: boolean } | null {
-  if (!iso) return null
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  const days = Math.round((startOfDay(new Date(iso)) - startOfDay(new Date())) / 86_400_000)
-  let label: string
-  if (days === 0) label = 'today'
-  else if (days === 1) label = 'tomorrow'
-  else if (days === -1) label = 'yesterday'
-  else label = new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toLowerCase()
-  return { label, overdue: days < 0 }
-}
-
 /** A friendly, personal summary line for the to-dos header. */
 function pendingLabel(isPending: boolean, count: number): string {
   if (isPending) return 'loading…'
@@ -61,7 +38,6 @@ const Search = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} ari
 const Plus = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M12 5v14M5 12h14" /></svg>
 const Moon = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" /></svg>
 const Sun = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" /></svg>
-const Clock = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
 const Cal = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M7 3v4M17 3v4M4 10h16" /></svg>
 const Grid = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></svg>
 const Check = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M5 12.5l4 4L19 7" /></svg>
@@ -147,12 +123,6 @@ export function TodoDashboard() {
     if (sort !== 'custom') setSort('custom')
   }
 
-  const projectsById = useMemo(() => {
-    const map = new Map<number, Project>()
-    for (const p of projects.data ?? []) map.set(p.id, p)
-    return map
-  }, [projects.data])
-
   const toggleDone = (todo: Todo) => {
     const input: TodoInput = {
       project_id: todo.project_id,
@@ -164,6 +134,49 @@ export function TodoDashboard() {
       estimate_minutes: todo.estimate_minutes,
     }
     update.mutate({ id: todo.id, input })
+  }
+
+  // After creating, briefly highlight the new task once it lands in its sorted spot.
+  const [newId, setNewId] = useState<number | null>(null)
+  const flashTimer = useRef<number | undefined>(undefined)
+  const handleCreate = (input: TodoInput) => {
+    create.mutate(input, {
+      onSuccess: (todo) => {
+        setNewId(todo.id)
+        window.clearTimeout(flashTimer.current)
+        // keep in sync with the todo-flash animation duration in App.scss
+        flashTimer.current = window.setTimeout(() => setNewId(null), 2000)
+      },
+    })
+  }
+  useEffect(() => () => window.clearTimeout(flashTimer.current), [])
+
+  // Bring the just-created task into view, but only if it landed off-screen
+  // (block: "nearest" is a no-op for rows that are already visible). Depends on
+  // todos.data so it re-runs once the refetched list actually contains the row.
+  useEffect(() => {
+    if (newId == null) return
+    const el = document.querySelector(`[data-todo-id="${newId}"]`)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // optional call: jsdom (tests) doesn't implement scrollIntoView
+    el?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
+  }, [newId, todos.data])
+
+  /** Inline param edit: resend the whole todo with one field changed (optimistic). */
+  const patchTodo = (todo: Todo, patch: Partial<TodoInput>) => {
+    update.mutate({
+      id: todo.id,
+      input: {
+        project_id: todo.project_id,
+        title: todo.title,
+        notes: todo.notes,
+        priority: todo.priority,
+        status: todo.status,
+        due_at: todo.due_at,
+        estimate_minutes: todo.estimate_minutes,
+        ...patch,
+      },
+    })
   }
 
   const openCount = (todos.data ?? []).filter((t) => t.status === 'open').length
@@ -295,22 +308,24 @@ export function TodoDashboard() {
               </div>
             </div>
 
+            {/* sticky create row, pinned above the list (see CreateBar) */}
+            <CreateBar projects={projects.data ?? []} onCreate={handleCreate} />
+
             {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
 
             <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
               {(todos.data ?? []).map((todo) => {
-                const due = formatDue(todo.due_at)
-                const estimate = formatEstimate(todo.estimate_minutes)
-                const project = todo.project_id != null ? projectsById.get(todo.project_id) : undefined
                 const cls =
                   'todo' +
                   (todo.status === 'done' ? ' is-done' : '') +
                   (dragId === todo.id ? ' is-dragging' : '') +
-                  (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '')
+                  (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
+                  (newId === todo.id ? ' is-new' : '')
                 return (
                   <li
                     className={cls}
                     key={todo.id}
+                    data-todo-id={todo.id}
                     draggable
                     onDragStart={() => setDragId(todo.id)}
                     onDragEnd={() => {
@@ -338,19 +353,13 @@ export function TodoDashboard() {
                     <div className="todo__body">
                       <div className="todo__line">
                         <span className="todo__title">{todo.title}</span>
-                        {todo.priority !== 0 && (
-                          <span className={`badge badge--p${todo.priority}`}>{priorityLabel[todo.priority]}</span>
-                        )}
                       </div>
-                      <div className="todo__meta">
-                        {project && (
-                          <span className="meta">
-                            <span className="project__dot" style={{ background: project.color || 'var(--color-text-secondary)' }} />
-                            {project.name}
-                          </span>
-                        )}
-                        {estimate && <span className="meta"><Clock /> {estimate}</span>}
-                        {due && <span className={`meta${due.overdue ? ' meta--overdue' : ''}`}><Cal /> {due.label}</span>}
+                      {/* inline param fields — set values show; empty ones reveal on hover/focus */}
+                      <div className="todo__params">
+                        <ProjectField value={todo.project_id} projects={projects.data ?? []} onChange={(v) => patchTodo(todo, { project_id: v })} />
+                        <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
+                        <PriorityField value={todo.priority} onChange={(v) => patchTodo(todo, { priority: v })} />
+                        <EffortField value={todo.estimate_minutes} onChange={(v) => patchTodo(todo, { estimate_minutes: v })} />
                       </div>
                     </div>
                     {/* in custom sort the handle is the drag affordance; otherwise a hint */}
@@ -359,8 +368,6 @@ export function TodoDashboard() {
                 )
               })}
             </ul>
-
-            <CreateTask onAdd={(title) => create.mutate({ title })} pending={create.isPending} />
           </div>
         )}
       </main>
@@ -480,17 +487,36 @@ function SidebarSection({ label, children }: { label: string; children: ReactNod
 }
 
 /**
- * Create affordance shown below the list: a dashed tile that invites a new task.
- * Click it (or press "c" anywhere outside a field) to reveal an inline input;
- * enter creates and keeps it open for rapid entry, escape or an empty blur closes it.
+ * Sticky create row pinned above the list, styled like a task row but dashed and
+ * without a checkbox. It always occupies the height of a task row with params, so
+ * opening/closing never resizes anything or overlaps the list. At rest only the
+ * prompt shows (the param line keeps its space, invisible); "c" or a click swaps
+ * in the title input + the four param chips. Enter creates and keeps it open for
+ * rapid entry; Escape closes, and a click outside closes only while it's empty.
  */
-function CreateTask({ onAdd, pending }: { onAdd: (title: string) => void; pending: boolean }) {
+function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (input: TodoInput) => void }) {
   const [open, setOpen] = useState(false)
-  const [value, setValue] = useState('')
+  const [title, setTitle] = useState('')
+  const [projectId, setProjectId] = useState<number | null>(null)
+  const [priority, setPriority] = useState<Priority>(0)
+  const [due, setDue] = useState<string | null>(null)
+  const [effort, setEffort] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
-  // "c" is a global shortcut to start a new task, as long as the user isn't
-  // already typing somewhere (search box, the input itself, etc.).
+  const reset = () => {
+    setTitle('')
+    setProjectId(null)
+    setPriority(0)
+    setDue(null)
+    setEffort(null)
+  }
+  const close = () => {
+    setOpen(false)
+    reset()
+  }
+
+  // "c" opens the create row, unless the user is already typing somewhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
@@ -508,46 +534,75 @@ function CreateTask({ onAdd, pending }: { onAdd: (title: string) => void; pendin
     if (open) inputRef.current?.focus()
   }, [open])
 
+  // A click outside closes the editor, but only while nothing was entered yet —
+  // set params or a typed title survive a stray click. Field menus are portaled,
+  // so clicks inside `.popover` don't count as outside.
+  const dirty = title.trim() !== '' || projectId != null || priority !== 0 || due != null || effort != null
+  useEffect(() => {
+    if (!open || dirty) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (rootRef.current?.contains(t) || t.closest('.popover')) return
+      close()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open, dirty])
+
   if (!open) {
     return (
-      <button className="create-tile" type="button" onClick={() => setOpen(true)}>
-        <Plus />
-        <span>
-          click to create a new task — or press <kbd>c</kbd>
-        </span>
-      </button>
+      <div className="create-bar" ref={rootRef}>
+        <button className="create-tile" type="button" onClick={() => setOpen(true)}>
+          <div className="create-tile__row">
+            <Plus />
+            <span>
+              create a task — or press <kbd>c</kbd>
+            </span>
+          </div>
+          {/* invisible height keeper: reserves the param line so the row never resizes */}
+          <div className="create-tile__params is-ghost" aria-hidden>
+            <span className="chip">
+              <span className="chip__label">placeholder</span>
+            </span>
+          </div>
+        </button>
+      </div>
     )
   }
 
   return (
-    <form
-      className="create-tile is-editing"
-      onSubmit={(e) => {
-        e.preventDefault()
-        const title = value.trim()
-        if (!title) return
-        onAdd(title)
-        setValue('') // keep open so several tasks can be added in a row
-      }}
-    >
-      <Plus />
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => {
-          if (!value.trim()) setOpen(false)
+    <div className="create-bar" ref={rootRef}>
+      <form
+        className="create-tile is-editing"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const t = title.trim()
+          if (!t) return
+          onCreate({ title: t, project_id: projectId, priority, status: 'open', due_at: due, estimate_minutes: effort })
+          reset()
+          inputRef.current?.focus() // keep open for rapid entry
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            setValue('')
-            setOpen(false)
-          }
-        }}
-        placeholder="what needs doing?"
-        aria-label="new task title"
-        disabled={pending}
-      />
-    </form>
+      >
+        <div className="create-tile__row">
+          <Plus />
+          <input
+            ref={inputRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') close()
+            }}
+            placeholder="what needs doing?"
+            aria-label="new task title"
+          />
+        </div>
+        <div className="create-tile__params">
+          <ProjectField value={projectId} projects={projects} onChange={setProjectId} />
+          <DueField value={due} onChange={setDue} />
+          <PriorityField value={priority} onChange={setPriority} />
+          <EffortField value={effort} onChange={setEffort} />
+        </div>
+      </form>
+    </div>
   )
 }

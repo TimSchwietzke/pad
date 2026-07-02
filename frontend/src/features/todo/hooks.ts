@@ -37,12 +37,27 @@ export function useCreateTodo() {
   })
 }
 
-/** Updates a todo (status, priority, fields) and refreshes the lists. */
+/**
+ * Updates a todo (status, priority, params, …). The change is applied optimistically
+ * to every cached todo list so checking a box or setting a param feels instant; a
+ * refetch then reconciles ordering. Rolls back on error.
+ */
 export function useUpdateTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: TodoInput }) => todoApi.updateTodo(id, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.todos }),
+    onMutate: async ({ id, input }: { id: number; input: TodoInput }) => {
+      await qc.cancelQueries({ queryKey: keys.todos })
+      const prev = qc.getQueriesData<Todo[]>({ queryKey: keys.todos })
+      qc.setQueriesData<Todo[]>({ queryKey: keys.todos }, (old) =>
+        old?.map((t) => (t.id === id ? ({ ...t, ...input, project_id: input.project_id ?? null } as Todo) : t)),
+      )
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data))
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.todos }),
   })
 }
 
