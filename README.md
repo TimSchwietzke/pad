@@ -119,15 +119,15 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **ToDo-Modul (Frontend):** token-basiertes Dashboard — Sidebar, to-dos-Liste, Sortierung (priority/effort/deadline), Listen-Dichte (komfortabel/kompakt), Abhaken und Inline-Anlegen; hell/dunkel; Komponententests im CI gegated
 - **Custom-Reihenfolge:** Aufgaben aus **jeder** Sortierung per Drag-and-drop umordnen — die Anordnung wird automatisch als „custom"-Reihenfolge gespeichert und angezeigt; persistent über `todos.position` + Reorder-Endpoint (Transaktion, ownership-geprüft), neue Todos hängen hinten an
 - **settings:** eigener Bereich fürs Erscheinungsbild — Preset (Standard/Google), hell/dunkel und Standard-Listendichte; geräteweit in localStorage gespeichert. Preset aus der Topbar hierher verschoben, hell/dunkel-Toggle bleibt oben
-- **Aufgaben-Parameter inline setzen** — project, due, priority, effort direkt an der Aufgabe über kleine Chips mit Klick-Menü (gleich beim Anlegen und beim Bearbeiten, optimistisch). Sticky Create-Zeile oben mit Overlay; „c" öffnet sie, Enter legt an + kurzer Highlight an der sortierten Stelle
+- **Aufgaben-Parameter inline setzen** — project, due, priority, effort direkt an der Aufgabe über kleine Chips mit Klick-Menü (gleich beim Anlegen und beim Bearbeiten, optimistisch). Sticky Create-Zeile oben in Task-Optik; „c" öffnet sie, Enter legt an + kurzer Highlight an der sortierten Stelle
+- **Fertige Todos & Filter:** Abhaken lässt die Aufgabe ~3 s stehen (erneuter Klick = rückgängig), dann blendet sie sanft aus und die Liste rückt nach; ausklappbares Filter-Panel (offen/fertig/beides + Projekt), Wahl geräteweit gespeichert, fertige sinken bei „beides" nach unten
 
 ### WIP / ToDo
 - **Tags pro Aufgabe** — Multi-Select/Chip-Input als Fast-Follow zu den übrigen Parametern. Als Nächstes.
 - **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines. Geplant.
-- **Fertige Todos** — nach dem Abhaken ausblenden (~3 s), Filter offen/fertig/beides, fertige standardmäßig unten. Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
-- **Listen-Gruppierung** — Liste in Unterlisten teilen (pro Projekt oder pro Zeitraum: heute/Woche/Monat, anpassbar). Geplant.
-- **Filter-Panel** — auswählen, was angezeigt wird; ein- und ausklappbares Panel statt fester Leiste. Geplant.
+- **Listen-Gruppierung** — Liste in Unterlisten teilen (pro Projekt oder pro Zeitraum: heute/Woche/Monat, anpassbar). Als Nächstes.
+- **Filter ausbauen** — Tag-Filter im Panel, sobald Tags pro Aufgabe setzbar sind. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
 - **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach

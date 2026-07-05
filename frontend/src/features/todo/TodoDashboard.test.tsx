@@ -188,6 +188,83 @@ describe('TodoDashboard', () => {
     expect(await within(row).findByText('medium')).toBeInTheDocument()
   })
 
+  it('a checked task lingers for the grace period, then collapses away', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard doneGraceMs={80} />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+
+    await user.click(await screen.findByRole('checkbox', { name: /mark done/i }))
+    // still visible right after checking (grace period, checkbox = undo)
+    expect(screen.getByText('alpha')).toBeInTheDocument()
+    // grace (80ms) + collapse (450ms) later the row has left the open view
+    await waitFor(() => expect(screen.queryByText('alpha')).not.toBeInTheDocument(), { timeout: 2000 })
+  })
+
+  it('re-checking within the grace period keeps the task', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard doneGraceMs={500} />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+
+    await user.click(await screen.findByRole('checkbox', { name: /mark done/i }))
+    await user.click(await screen.findByRole('checkbox', { name: /mark open/i }))
+    // wait well past grace + collapse; the undo must have cancelled the departure
+    await new Promise((r) => setTimeout(r, 1100))
+    expect(screen.getByText('alpha')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /mark done/i })).toBeInTheDocument()
+  })
+
+  it('filters by status and puts done tasks last in "both"', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'finished one', status: 'done' }),
+        makeTodo({ id: 2, title: 'open one' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+
+    // default filter: open only
+    await screen.findByText('open one')
+    expect(screen.queryByText('finished one')).not.toBeInTheDocument()
+
+    // open the panel, switch to done only
+    await user.click(screen.getByRole('button', { name: 'filter' }))
+    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
+    await user.click(panel.getByRole('button', { name: 'done' }))
+    expect(await screen.findByText('finished one')).toBeInTheDocument()
+    expect(screen.queryByText('open one')).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('pad.filter.status')!)).toBe('done')
+
+    // "both": open tasks first, done sink to the bottom (seed order was done first)
+    await user.click(panel.getByRole('button', { name: 'both' }))
+    const titles = [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    expect(titles).toEqual(['open one', 'finished one'])
+  })
+
+  it('filters by project', async () => {
+    resetDb({
+      projects: [{ id: 1, name: 'work', color: '#f00', created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z' }],
+      todos: [
+        makeTodo({ id: 1, title: 'work task', project_id: 1 }),
+        makeTodo({ id: 2, title: 'loose task' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('loose task')
+
+    await user.click(screen.getByRole('button', { name: 'filter' }))
+    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
+    await user.click(panel.getByRole('button', { name: 'work' }))
+
+    expect(screen.getByText('work task')).toBeInTheDocument()
+    expect(screen.queryByText('loose task')).not.toBeInTheDocument()
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>

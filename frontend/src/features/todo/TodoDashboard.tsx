@@ -25,6 +25,10 @@ const sortSpec: Record<SortKey, string> = {
 // compact tightens rows so more fits on screen.
 type Density = 'comfortable' | 'compact'
 
+// Which tasks the list shows. "open" is the default; with "both", done tasks
+// sink to the bottom (the custom drag order is a separate concern).
+type StatusFilter = 'open' | 'done' | 'both'
+
 /** A friendly, personal summary line for the to-dos header. */
 function pendingLabel(isPending: boolean, count: number): string {
   if (isPending) return 'loading…'
@@ -69,7 +73,7 @@ function Avatar({ size = 32 }: { size?: number }) {
  * The theme/preset toggles live in the top bar only for now — they move into a
  * settings page later. The dashboard is a placeholder until widget config lands.
  */
-export function TodoDashboard() {
+export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } = {}) {
   // Device-level preferences, persisted in localStorage (see settings view).
   const [preset, setPreset] = usePersistentState<Preset>('pad.preset', 'standard')
   // Default to the visitor's OS color scheme until they pick one.
@@ -79,6 +83,12 @@ export function TodoDashboard() {
   const [density, setDensity] = usePersistentState<Density>('pad.density', 'comfortable')
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
+
+  // List filters — persisted like the other device preferences. The panel's
+  // open/closed state is deliberately ephemeral.
+  const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>('pad.filter.status', 'open')
+  const [projectFilter, setProjectFilter] = usePersistentState<number | null>('pad.filter.project', null)
+  const [filterOpen, setFilterOpen] = useState(false)
 
   useEffect(() => {
     const root = document.documentElement
@@ -123,17 +133,60 @@ export function TodoDashboard() {
     if (sort !== 'custom') setSort('custom')
   }
 
+  // A just-checked task lingers for a grace period (the checkbox doubles as undo),
+  // then collapses away — only while the "open" filter would hide it. Two timers:
+  // grace -> start the collapse animation, collapse -> actually remove the row.
+  // doneGraceMs is a prop only so tests can shorten the wait.
+  const [leaving, setLeaving] = useState<Map<number, 'grace' | 'closing'>>(new Map())
+  const leaveTimers = useRef<Map<number, number>>(new Map())
+  const setLeavePhase = (id: number, phase: 'grace' | 'closing' | null) =>
+    setLeaving((prev) => {
+      const next = new Map(prev)
+      if (phase === null) next.delete(id)
+      else next.set(id, phase)
+      return next
+    })
+  const clearLeaveTimer = (id: number) => {
+    const t = leaveTimers.current.get(id)
+    if (t) window.clearTimeout(t)
+    leaveTimers.current.delete(id)
+  }
+  useEffect(() => {
+    const timers = leaveTimers.current
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [])
+
   const toggleDone = (todo: Todo) => {
+    const nowDone = todo.status === 'open'
     const input: TodoInput = {
       project_id: todo.project_id,
       title: todo.title,
       notes: todo.notes,
       priority: todo.priority,
-      status: todo.status === 'open' ? 'done' : 'open',
+      status: nowDone ? 'done' : 'open',
       due_at: todo.due_at,
       estimate_minutes: todo.estimate_minutes,
     }
     update.mutate({ id: todo.id, input })
+
+    if (nowDone) {
+      setLeavePhase(todo.id, 'grace')
+      clearLeaveTimer(todo.id)
+      const graceTimer = window.setTimeout(() => {
+        setLeavePhase(todo.id, 'closing')
+        // keep in sync with the todo-collapse animation duration in App.scss
+        const closeTimer = window.setTimeout(() => {
+          leaveTimers.current.delete(todo.id)
+          setLeavePhase(todo.id, null)
+        }, 450)
+        leaveTimers.current.set(todo.id, closeTimer)
+      }, doneGraceMs)
+      leaveTimers.current.set(todo.id, graceTimer)
+    } else {
+      // undo within the grace period: cancel the departure, the row stays
+      clearLeaveTimer(todo.id)
+      setLeavePhase(todo.id, null)
+    }
   }
 
   // After creating, briefly highlight the new task once it lands in its sorted spot.
@@ -180,6 +233,20 @@ export function TodoDashboard() {
   }
 
   const openCount = (todos.data ?? []).filter((t) => t.status === 'open').length
+
+  // What the list actually shows. The project filter guards against a stale
+  // persisted id (project deleted meanwhile); with "open", tasks in their grace
+  // period stay visible; with "both", done tasks sink below the open ones.
+  const projectIds = new Set((projects.data ?? []).map((p) => p.id))
+  const activeProject = projectFilter != null && projectIds.has(projectFilter) ? projectFilter : null
+  const scoped = activeProject == null ? (todos.data ?? []) : (todos.data ?? []).filter((t) => t.project_id === activeProject)
+  const visible =
+    statusFilter === 'open'
+      ? scoped.filter((t) => t.status === 'open' || leaving.has(t.id))
+      : statusFilter === 'done'
+        ? scoped.filter((t) => t.status === 'done')
+        : [...scoped.filter((t) => t.status === 'open'), ...scoped.filter((t) => t.status === 'done')]
+  const filterActive = statusFilter !== 'open' || activeProject != null
 
   return (
     <div className="app" data-preset={preset} data-mode={mode}>
@@ -272,10 +339,50 @@ export function TodoDashboard() {
                 <h1 className="page-title">to-dos</h1>
                 <p className="page-sub">{pendingLabel(todos.isPending, openCount)}</p>
               </div>
-              {/* filter + share land in their own slices; shown here as the entry points */}
+              {/* share lands in its own slice (markdown export); shown as the entry point */}
               <div className="page-head__actions">
-                <button className="ghost-btn" type="button"><Filter /> filter</button>
+                <button
+                  className={`ghost-btn${filterActive ? ' is-active' : ''}`}
+                  type="button"
+                  aria-expanded={filterOpen}
+                  onClick={() => setFilterOpen((o) => !o)}
+                >
+                  <Filter /> filter
+                </button>
                 <button className="ghost-btn" type="button"><Share /> share</button>
+              </div>
+            </div>
+
+            {/* collapsible filter panel — slides open below the header */}
+            <div className={`filter-panel${filterOpen ? ' is-open' : ''}`}>
+              <div className="filter-panel__inner" inert={!filterOpen}>
+                <span className="controlbar__label">show</span>
+                {(['open', 'done', 'both'] as StatusFilter[]).map((key) => (
+                  <button
+                    key={key}
+                    className={`sort-pill${statusFilter === key ? ' is-active' : ''}`}
+                    onClick={() => setStatusFilter(key)}
+                  >
+                    {key}
+                  </button>
+                ))}
+                <span className="filter-panel__divider" aria-hidden />
+                <span className="controlbar__label">project</span>
+                <button
+                  className={`sort-pill${activeProject == null ? ' is-active' : ''}`}
+                  onClick={() => setProjectFilter(null)}
+                >
+                  all
+                </button>
+                {(projects.data ?? []).map((p) => (
+                  <button
+                    key={p.id}
+                    className={`sort-pill${activeProject === p.id ? ' is-active' : ''}`}
+                    onClick={() => setProjectFilter(p.id)}
+                  >
+                    <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} /> {p.name}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -313,14 +420,19 @@ export function TodoDashboard() {
 
             {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
 
+            {!todos.isPending && !todos.isError && visible.length === 0 && (
+              <p className="state">nothing here — adjust the filters or create a task.</p>
+            )}
+
             <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
-              {(todos.data ?? []).map((todo) => {
+              {visible.map((todo) => {
                 const cls =
                   'todo' +
                   (todo.status === 'done' ? ' is-done' : '') +
                   (dragId === todo.id ? ' is-dragging' : '') +
                   (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
-                  (newId === todo.id ? ' is-new' : '')
+                  (newId === todo.id ? ' is-new' : '') +
+                  (leaving.get(todo.id) === 'closing' ? ' is-leaving' : '')
                 return (
                   <li
                     className={cls}
