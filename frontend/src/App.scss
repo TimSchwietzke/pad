@@ -285,6 +285,46 @@ input {
   color: var(--color-text-primary);
   border-color: var(--color-text-placeholder);
 }
+/* filters deviate from the default -> the entry button shows it */
+.ghost-btn.is-active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+/* collapsible filter panel — a horizontal row of pills that slides open.
+   The 0fr/1fr grid trick animates height without measuring it. */
+.filter-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion) var(--ease-out);
+}
+.filter-panel.is-open {
+  grid-template-rows: 1fr;
+}
+.filter-panel__inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2px;
+}
+.filter-panel.is-open .filter-panel__inner {
+  padding-bottom: 12px;
+}
+.filter-panel__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--color-border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-panel {
+    transition: none;
+  }
+}
 
 .controlbar {
   display: flex;
@@ -364,7 +404,11 @@ input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+}
+/* spacing via sibling margins instead of gap, so a collapsing row (margin
+   animates to 0) leaves no double-gap jump behind when it unmounts */
+.todo + .todo {
+  margin-top: 10px;
 }
 .todo {
   display: flex;
@@ -492,16 +536,47 @@ input {
     border-color: var(--color-primary);
   }
 }
+
+/* after the grace period a checked task fades, then collapses; the list slides up.
+   Duration must match the closing timer in TodoDashboard (450ms). */
+.todo.is-leaving {
+  overflow: hidden;
+  pointer-events: none;
+  animation: todo-collapse 0.45s var(--ease-out) forwards;
+}
+@keyframes todo-collapse {
+  0% {
+    opacity: 0.55; /* matches .todo.is-done */
+    max-height: 200px;
+  }
+  45% {
+    opacity: 0;
+    max-height: 200px;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    border-width: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .todo.is-new,
   .popover {
     animation: none;
   }
+  /* keep the removal (the timer depends on it) but skip the choreography */
+  .todo.is-leaving {
+    animation-duration: 1ms;
+  }
 }
 
 /* density: compact tightens rows so more tasks fit on screen */
-.todo-list--compact {
-  gap: 6px;
+.todo-list--compact .todo + .todo {
+  margin-top: 6px;
 }
 .todo-list--compact .todo {
   padding: 8px 16px;
@@ -518,10 +593,12 @@ input {
 .todo-list--compact .todo__params {
   margin-top: 3px;
 }
-/* empty (unset) chips stay hidden until the row is hovered/focused — or the chip's
-   own menu is open (so picking a value doesn't make the trigger vanish). */
+/* empty (unset) chips stay invisible until the row is hovered/focused — or the
+   chip's own menu is open (so picking a value doesn't make the trigger vanish).
+   visibility (not display) keeps their width and the param line's height reserved,
+   so hovering never shifts the layout. */
 .todo:not(:hover):not(:focus-within) .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
-  display: none;
+  visibility: hidden;
 }
 /* compact mode keeps the list quiet: unset chips never show */
 .todo-list--compact .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
