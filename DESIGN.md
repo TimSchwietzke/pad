@@ -1,6 +1,6 @@
 # DESIGN.md – Personal Assistant Dashboard (pad)
 
-> **Status:** Entwurf v0.2 · Stand: 2026-06-26
+> **Status:** Entwurf v0.3 · Stand: 2026-07-05
 > Visuelle Referenz für pad. Antwortet auf „Wie sieht es aus".
 > Hinweis: Diese Datei wird von **impeccable** gelesen (`/impeccable *` liest PRODUCT.md + DESIGN.md).
 > Empfohlen: einmal `/impeccable init` laufen lassen, um sie ins kanonische Format zu gießen
@@ -34,9 +34,15 @@ Presets und Modus sind **zur Laufzeit umschaltbar** und vollständig token-basie
 Tokens werden in SCSS gepflegt und als **CSS Custom Properties** ausgegeben, damit der
 Theme-Wechsel zur Laufzeit ohne Komponenten-Änderung funktioniert (vgl. ARCHITECTURE.md §7.3).
 
-> **Hex-Werte aus den Stitch-Bilddaten sind Startwerte** und werden beim Aufbau des
-> SCSS-Tokensets final abgeglichen. Die Akzentfarbe (Blau) ist bewusst ein einzelnes Token
-> und damit leicht austauschbar.
+> **Redesign v0.3 (2026-07-05):** Das Standard-Preset hat jetzt eine eigene **Teal/Petrol-
+> Identität** (kein generisches Blau mehr), dark-first auf Linear-Niveau, mit gekonnt-sparsamem
+> Akzent (nie großflächig). Umgesetzt als **zweischichtiges Token-System**: eine primitive
+> OKLCH-Akzent-Ramp (`--accent-50..900`) + Semantic-Tokens (`--color-*`), plus ein echtes
+> **Elevation-System** (3 Flächen-Ebenen `--color-bg-sidebar/surface/surface-2/surface-3` +
+> `--shadow-sm/md/lg` + `--shadow-glow`). Ein späteres Design = Akzent-Ramp tauschen, ohne
+> Komponenten anzufassen. **Quelle der Wahrheit ist `frontend/src/styles/tokens.scss`;** die
+> Hex-Tabellen unten sind der frühere Stitch-Entwurf und historisch. Das **Google-Preset bleibt
+> unverändert** (Google-Blau/Material).
 
 **Theming-Modell:** Token-Werte hängen von zwei Achsen ab – **Preset** (`Standard` | `Google`)
 und **Modus** (`hell` | `dunkel`). Auswahl über Attribute am Root-Element, z. B.

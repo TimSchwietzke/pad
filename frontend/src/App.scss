@@ -58,7 +58,8 @@ input {
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-4);
-  background: var(--color-bg-surface);
+  /* the sidebar sits back on its own layer, behind the raised content cards */
+  background: var(--color-bg-sidebar);
   border-right: 1px solid var(--color-border);
   overflow-y: auto;
 }
@@ -71,6 +72,7 @@ input {
 .sidebar__name {
   font-size: 1.4rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--color-primary);
 }
 .sidebar__tagline {
@@ -116,7 +118,9 @@ input {
   gap: 6px;
 }
 .sidebar__label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   color: var(--color-text-secondary);
   padding: 0 4px;
 }
@@ -252,7 +256,8 @@ input {
   margin: 0;
   font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.021em;
+  color: var(--color-text-primary);
 }
 .page-sub {
   margin: 4px 0 0;
@@ -418,12 +423,15 @@ input {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   padding: 14px 16px;
-  transition: border-color var(--motion) var(--ease-out), box-shadow var(--motion) var(--ease-out),
-    opacity var(--motion) var(--ease-out);
-}
-.todo:hover {
-  border-color: var(--color-text-placeholder);
   box-shadow: var(--shadow-sm);
+  transition: border-color var(--motion) var(--ease-out), box-shadow var(--motion) var(--ease-out),
+    transform var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out);
+}
+/* real depth on hover: the card lifts a hair and casts a softer, larger shadow */
+.todo:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 .todo.is-done {
   opacity: 0.55;
@@ -627,6 +635,7 @@ input {
   color: var(--color-text-primary);
 }
 .chip.is-set {
+  background: var(--color-bg-surface-2);
   border-color: var(--color-border);
 }
 .chip.is-set.is-danger {
@@ -655,10 +664,10 @@ input {
   min-width: 168px;
   max-width: 264px;
   padding: 4px;
-  background: var(--color-bg-surface);
+  background: var(--color-bg-surface-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   animation: pop-in var(--motion-fast) var(--ease-out);
 }
 @keyframes pop-in {
@@ -776,10 +785,13 @@ input {
   color: var(--color-text-primary);
   background: var(--color-bg-surface);
 }
-/* editing keeps the dashed identity, just switches to the accent + a surface */
+/* editing keeps the dashed identity, switches to the accent + a surface, and
+   earns one signature moment: a soft accent glow marking the focused composer */
 .create-tile.is-editing {
   border-color: var(--color-primary);
+  border-style: solid;
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-glow);
   cursor: default;
 }
 .create-tile__row {
@@ -880,6 +892,7 @@ input {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
   padding: 4px 20px 16px;
 }
 .settings-group__title {
@@ -973,13 +986,19 @@ input {
   padding: 8px 16px;
   border-radius: var(--radius-button);
   font-size: 0.9rem;
-  transition: background var(--motion) var(--ease-out);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--motion) var(--ease-out), box-shadow var(--motion) var(--ease-out),
+    transform var(--motion) var(--ease-out);
 }
 .btn:hover {
   background: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 .btn:active {
-  transform: translateY(1px);
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Sidebar collapses on small screens for now; full mobile layout comes later. */
