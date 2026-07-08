@@ -48,7 +48,7 @@ Mehr im Detail: [ARCHITECTURE.md](ARCHITECTURE.md) (Aufbau & Schnittstellen) und
 
 ## Tech-Stack
 
-- **Frontend:** React + Vite + TypeScript (SPA), SCSS-Tokens fürs Theming (hell/dunkel, Standard- & Google-Preset)
+- **Frontend:** React + Vite + TypeScript (SPA); **Tailwind CSS + shadcn/ui** (Radix) für Komponenten, **lucide-react** für Icons — auf die bestehenden **SCSS-Tokens** gemappt, sodass das Theming (hell/dunkel, Standard- & Google-Preset) *eine* Quelle bleibt
 - **Backend:** Go mit chi, sqlc für typsichere Queries, strukturiertes Logging via slog
 - **Datenbank:** PostgreSQL (pgx-Treiber, goose-Migrationen)
 - **Tests/CI:** Go-Tests + Vitest, GitHub Actions gated jeden PR
@@ -121,12 +121,16 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **settings:** eigener Bereich fürs Erscheinungsbild — Preset (Standard/Google), hell/dunkel und Standard-Listendichte; geräteweit in localStorage gespeichert. Preset aus der Topbar hierher verschoben, hell/dunkel-Toggle bleibt oben
 - **Aufgaben-Parameter inline setzen** — project, due, priority, effort direkt an der Aufgabe über kleine Chips mit Klick-Menü (gleich beim Anlegen und beim Bearbeiten, optimistisch). Sticky Create-Zeile oben in Task-Optik; „c" öffnet sie, Enter legt an + kurzer Highlight an der sortierten Stelle
 - **Fertige Todos & Filter:** Abhaken lässt die Aufgabe ~3 s stehen (erneuter Klick = rückgängig), dann blendet sie sanft aus und die Liste rückt nach; ausklappbares Filter-Panel (offen/fertig/beides + Projekt), Wahl geräteweit gespeichert, fertige sinken bei „beides" nach unten
+- **Triage-Command-Layout (to-dos):** Focus-Band mit Live-Indikatoren (überfällig / heute fällig / geschätzte Zeit heute), Liste nach Datums-Buckets gruppiert (`overdue → today → this week → later → no date → done`, die Sortierung ordnet innerhalb), und eine Kontext-Rail (`week ahead` + `by project` + `tags`, Klick filtert die Liste) — macht Triage zum sichtbaren Aufbau und füllt breite Schirme; responsiv (Rail < 1080px, Sidebar < 760px weg). Unit- + Komponententests
+- **Shell-Grundaufbau:** globale Nav und Modul-Kontext getrennt — eine **voll ein-/ausklappbare Nav-Sidebar** zeigt nur die Module; standardmäßig komplett eingeklappt (voller Platz für Inhalt), Aufklappen per Klick auf den Panel-Toggle in der Kopfleiste (persistiert, `Escape` schließt). Aufgeklappt ist sie eine **schwebende Card auf höherer Ebene** (12px Abstand zu den Fensterkanten, gerundet, Schatten), die den Inhalt **verschiebt** statt zu verdecken — wie in der Claude-Desktop-App. Projekte/Tags sind aus der globalen Leiste in die to-dos-Kontext-Rail gewandert. **Zentrierte Topbar-Suche** mit `⌘K`/`Ctrl K`-Shortcut. Komponententests fürs Auf-/Zuklappen + Shortcut
+- **Tailwind + shadcn/ui-Fundament:** Tailwind CSS (v3) + shadcn/ui (Radix) + lucide-react ins Frontend adoptiert — **ohne UI/UX-Bruch**: Tailwind-Utilities zeigen auf die bestehenden `--color-*`/`--radius-*`-Tokens (eine Quelle, Preset×Mode bleibt), Preflight aus (kein Reset der Altkomponenten), `@`-Alias + `cn`-Util + `components.json` eingerichtet. Proof-of-Concept: Shell-Icons auf lucide umgestellt (Stroke/Größe gematcht) und die Topbar-Buttons auf die shadcn-`Button`-Komponente
+- **Dashboard-Startseite (erste Ausbaustufe):** statt Platzhalter ein ruhiges „heute"-Zuhause — zeitbasierter Gruß, dieselben Live-Indikatoren wie das to-dos-Band, und ein Panel-Raster, das die Modul-Bausteine wiederverwendet: `today & overdue` (Fokusliste mit Sprung in die to-dos), `week ahead`, `by project` (Klick öffnet die gefilterte Liste) plus dezente „coming soon"-Kacheln für Kalender/Bewerbungen. Konfigurierbare Widgets ersetzen das später
 
 ### WIP / ToDo
 - **Tags pro Aufgabe** — Multi-Select/Chip-Input als Fast-Follow zu den übrigen Parametern. Als Nächstes.
 - **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines. Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
-- **Listen-Gruppierung** — Liste in Unterlisten teilen (pro Projekt oder pro Zeitraum: heute/Woche/Monat, anpassbar). Als Nächstes.
+- **Listen-Gruppierung ausbauen** — die Zeitraum-Gruppierung (Datums-Buckets) steht; offen bleiben Gruppierung **pro Projekt** und frei wählbare/anpassbare Gruppierungs-Achsen. Geplant.
 - **Filter ausbauen** — Tag-Filter im Panel, sobald Tags pro Aufgabe setzbar sind. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
 - **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.

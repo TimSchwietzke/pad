@@ -26,8 +26,9 @@
   --motion-slow: 260ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* semantic z-index scale (sticky < dropdown < popover) */
+  /* semantic z-index scale (sticky < sidebar < dropdown < popover) */
   --z-sticky: 10;
+  --z-sidebar: 20;
   --z-dropdown: 30;
   --z-popover: 40;
 
