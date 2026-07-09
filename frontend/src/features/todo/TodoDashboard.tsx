@@ -20,6 +20,10 @@ import {
   ListTodo as Check,
   Calendar as Cal,
   Settings as Gear,
+  Plus as PlusIcon,
+  Rows2,
+  AlignJustify,
+  GripVertical,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -54,14 +58,11 @@ function pendingLabel(isPending: boolean, count: number): string {
   return `you have ${count} pending ${count === 1 ? 'task' : 'tasks'}`
 }
 
-// Module / shell icons come from lucide-react (see imports). A few list/create affordances
-// are still small hand-drawn glyphs — they'll follow to lucide in a later pass.
-const sv = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-const Plus = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M12 5v14M5 12h14" /></svg>
-const Rows = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="6" rx="1.5" /><rect x="4" y="13" width="16" height="6" rx="1.5" /></svg>
-const Lines = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-// six-dot drag affordance — a placeholder for the future custom-priority handle
-const Grip = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>
+// All icons are lucide-react now; these thin wrappers just fix the size per use-site.
+const Plus = () => <PlusIcon size={18} />
+const Rows = () => <Rows2 size={16} />
+const Lines = () => <AlignJustify size={16} />
+const Grip = () => <GripVertical size={16} />
 
 /** A small round avatar placeholder (auth/account logic comes later). */
 function Avatar({ size = 32 }: { size?: number }) {
