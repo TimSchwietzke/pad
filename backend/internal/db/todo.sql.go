@@ -335,6 +335,43 @@ func (q *Queries) ListTagsForTodo(ctx context.Context, todoID int64) ([]TodoTag,
 	return items, nil
 }
 
+const listTagsForUserTodos = `-- name: ListTagsForUserTodos :many
+SELECT m.todo_id, t.id, t.name FROM todo_tags t
+JOIN todo_tag_map m ON m.tag_id = t.id
+WHERE t.user_id = $1
+ORDER BY m.todo_id, t.name
+`
+
+type ListTagsForUserTodosRow struct {
+	TodoID int64  `json:"todo_id"`
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+}
+
+// Every (todo, tag) link for the user, so the todo list can embed tags in one round-trip.
+func (q *Queries) ListTagsForUserTodos(ctx context.Context, userID int64) ([]ListTagsForUserTodosRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTagsForUserTodos, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTagsForUserTodosRow{}
+	for rows.Next() {
+		var i ListTagsForUserTodosRow
+		if err := rows.Scan(&i.TodoID, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeTagFromTodo = `-- name: RemoveTagFromTodo :exec
 DELETE FROM todo_tag_map
 WHERE todo_id = $1 AND tag_id = $2

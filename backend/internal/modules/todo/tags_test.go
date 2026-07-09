@@ -93,6 +93,40 @@ func TestTagAssignmentOwnership(t *testing.T) {
 	}
 }
 
+// TestListEmbedsTags checks that GET /todos returns each todo's tags inline, and
+// an empty slice (never null) for an untagged todo.
+func TestListEmbedsTags(t *testing.T) {
+	srv := newTestServer(t)
+
+	taggedID := createTodo(t, srv, `{"title":"tagged"}`)
+	plainID := createTodo(t, srv, `{"title":"plain"}`)
+	tagID := createTag(t, srv, `{"name":"home"}`)
+
+	assign := fmt.Sprintf("/api/todo/todos/%d/tags/%d", taggedID, tagID)
+	if rec := do(t, srv, http.MethodPost, assign, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("assign: status=%d body=%s", rec.Code, rec.Body)
+	}
+
+	rec := do(t, srv, http.MethodGet, "/api/todo/todos", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: status=%d", rec.Code)
+	}
+	var list []todoResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	byID := make(map[int64]todoResponse, len(list))
+	for _, td := range list {
+		byID[td.ID] = td
+	}
+
+	if tags := byID[taggedID].Tags; len(tags) != 1 || tags[0].Name != "home" {
+		t.Fatalf("tagged todo: expected [home], got %+v", tags)
+	}
+	// untagged todo must serialize as [] (not null), so the client always gets a slice
+	if tags := byID[plainID].Tags; tags == nil || len(tags) != 0 {
+		t.Fatalf("plain todo: expected non-nil empty slice, got %+v", tags)
+	}
+}
+
 // createTodo posts a todo and returns its id.
 func createTodo(t *testing.T, h http.Handler, body string) int64 {
 	t.Helper()
