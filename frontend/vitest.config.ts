@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 // Test runner config, kept separate from vite.config.ts so the production build
@@ -6,6 +7,12 @@ import { defineConfig } from 'vitest/config'
 // Refresh, so esbuild handles JSX with the automatic runtime (no React import).
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
+  // mirror vite.config's `@` → src alias so component imports resolve in tests
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

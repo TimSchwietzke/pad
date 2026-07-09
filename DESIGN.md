@@ -1,6 +1,6 @@
 # DESIGN.md – Personal Assistant Dashboard (pad)
 
-> **Status:** Entwurf v0.2 · Stand: 2026-06-26
+> **Status:** Entwurf v0.3 · Stand: 2026-07-05
 > Visuelle Referenz für pad. Antwortet auf „Wie sieht es aus".
 > Hinweis: Diese Datei wird von **impeccable** gelesen (`/impeccable *` liest PRODUCT.md + DESIGN.md).
 > Empfohlen: einmal `/impeccable init` laufen lassen, um sie ins kanonische Format zu gießen
@@ -34,9 +34,15 @@ Presets und Modus sind **zur Laufzeit umschaltbar** und vollständig token-basie
 Tokens werden in SCSS gepflegt und als **CSS Custom Properties** ausgegeben, damit der
 Theme-Wechsel zur Laufzeit ohne Komponenten-Änderung funktioniert (vgl. ARCHITECTURE.md §7.3).
 
-> **Hex-Werte aus den Stitch-Bilddaten sind Startwerte** und werden beim Aufbau des
-> SCSS-Tokensets final abgeglichen. Die Akzentfarbe (Blau) ist bewusst ein einzelnes Token
-> und damit leicht austauschbar.
+> **Redesign v0.3 (2026-07-05):** Das Standard-Preset hat jetzt eine eigene **Teal/Petrol-
+> Identität** (kein generisches Blau mehr), dark-first auf Linear-Niveau, mit gekonnt-sparsamem
+> Akzent (nie großflächig). Umgesetzt als **zweischichtiges Token-System**: eine primitive
+> OKLCH-Akzent-Ramp (`--accent-50..900`) + Semantic-Tokens (`--color-*`), plus ein echtes
+> **Elevation-System** (3 Flächen-Ebenen `--color-bg-sidebar/surface/surface-2/surface-3` +
+> `--shadow-sm/md/lg` + `--shadow-glow`). Ein späteres Design = Akzent-Ramp tauschen, ohne
+> Komponenten anzufassen. **Quelle der Wahrheit ist `frontend/src/styles/tokens.scss`;** die
+> Hex-Tabellen unten sind der frühere Stitch-Entwurf und historisch. Das **Google-Preset bleibt
+> unverändert** (Google-Blau/Material).
 
 **Theming-Modell:** Token-Werte hängen von zwei Achsen ab – **Preset** (`Standard` | `Google`)
 und **Modus** (`hell` | `dunkel`). Auswahl über Attribute am Root-Element, z. B.
@@ -162,9 +168,33 @@ Theme-Wechsel und spätere Anpassung funktionieren.
 * Hell: zusätzlich subtiler `--shadow-sm`. Dunkel: Trennung über Rahmen, kaum Schatten.
 * Häufig mit Header-Bereich, optional kombiniert mit Status-Badges. **Keine verschachtelten Cards.**
 
-### 3.3 Navigation (Sidebar & Topbar)
-* **Sidebar:** links fixiert, Hintergrund `--color-bg-surface`. User-Kontext oben („Assistant" / „pad"), hierarchische Navigation, Primary-Action-Button („New Request") am Ende der Liste, Utilities (Help, Logout) ganz unten. Aktiver Eintrag: `--color-sidebar-active`.
-* **Topbar:** Flex (space-between). Page-Title/Logo links (wenn Sidebar eingeklappt), Such-Input linksbündig/mittig, Quick-Actions (Theme-Toggle, Notifications) rechts.
+### 3.3 Navigation (Nav-Sidebar & Topbar)
+
+**Grundsatz:** Globale Navigation und Modul-Kontext werden *getrennt*. Die Sidebar zeigt
+**nur die Module** (dashboard, to-dos, calendar, applications); modul-spezifische Sub-Navigation
+(Projekte, Tags bei den to-dos) lebt **im Modul** (Kontext-Rail, §4.1) — die globale Chrome bleibt
+modul-agnostisch.
+
+* **Nav-Sidebar (voll ein-/ausklappbar, schwebende Card):** Standard **komplett eingeklappt**
+  (0 Breite) → der Inhalt hat die volle Breite. Auf-/Zuklappen ausschließlich per **Klick** auf **den
+  einen** Panel-Toggle oben-links in der Kopfleiste (persistiert) — **kein zweiter Button auf der
+  Card**. Die Card **beginnt unterhalb der Kopfleiste** (nicht ganz oben), sodass der Toggle in einer
+  eigenen, aufgeräumten Ecke sitzt (Platz für spätere Elemente). Aufgeklappt ist sie eine **schwebende
+  Card auf höherer Ebene**: `--color-bg-surface`, `--radius-lg`, `--shadow-lg`, mit **12px Abstand zu
+  den Fensterkanten** ringsum — sie **verschiebt** den Inhalt (push), verdeckt ihn aber nicht. Die Card
+  fährt per `transform` ein, während die Spaltenbreite den Push mitanimiert. Inhalt: Marken-Zeichen
+  (Teal-Glyph) + Wortmarke oben, Modul-Icons mit Labels, unten settings + Account. Geschlossen ist die
+  Sidebar `inert` (nicht fokussierbar); `Escape` schließt sie. Aktiver Eintrag: `--color-primary-bg` +
+  `--color-primary`.
+* **Topbar (keine eigenständige Leiste, volle Breite):** **kein gefüllter Hintergrund und keine
+  Unterkante** — die Kopfzeile löst sich in die Canvas-Fläche auf, damit die Seite als *eine* Fläche
+  liest; nur die einzelnen Elemente tragen Farbe. Eine gefüllte Bar mit eigener Farbe würde (zumal sie
+  die Surface-Farbe der Sidebar teilt) die Seite sichtbar in Zonen rahmen — bewusst vermieden. Die
+  Kopfzeile liegt **über** dem Sidebar-plus-Content-Bereich (volle Breite), damit der **Panel-Toggle
+  oben-links fest an einer Stelle bleibt** und die zentrierte Suche beim Auf-/Zuklappen **nicht
+  springt**. Die Sidebar-Card beginnt darunter und bleibt absichtlich eine abgehobene Fläche (sie *ist*
+  eine höhere Ebene). Links der Panel-Toggle; mittig zentriert der Such-Input (mit Ruhe-Hairline +
+  `⌘K`/`Ctrl K`-Hinweis); rechts die Quick-Actions (Theme-Toggle, Notifications, Account-Avatar).
 
 ### 3.4 Inputs & Forms
 * **Search-Input:** Radius `--radius-pill`, Hintergrund `--color-bg-surface-2`, Leading-Icon (Lupe), Platzhalter `--color-text-placeholder`.
@@ -182,6 +212,38 @@ Theme-Wechsel und spätere Anpassung funktionieren.
 * **Responsive Grids ohne Breakpoints:** `repeat(auto-fit, minmax(280px, 1fr))`.
 * **Flexbox für 1D, Grid für 2D.** Tasks/Kanban: mehrspaltiges Grid; Dashboard: mehrspaltige Card-Anordnung.
 * **Z-Index-Skala** (semantisch, keine 999-Magic): dropdown → sticky → modal-backdrop → modal → toast → tooltip.
+
+### 4.1 To-dos-Arbeitsbereich – „Triage-Command"-Layout
+
+Die to-dos-Ansicht ist bewusst **kein** generisches Sidebar-plus-zentrierte-Spalte-Layout, sondern
+macht den Produktkern (*Triage: was ist als Nächstes dran*) zum sichtbaren Aufbau. Drei Elemente:
+
+* **Focus-Band** (Seitenanker): Titel + persönliche Zeile, darunter eine ruhige Zeile **handlungs-
+  relevanter Indikatoren** – `überfällig` / `heute fällig` / `geschätzte Zeit heute`. Keine großen
+  Metrik-Kacheln (Anti-Referenz), sondern kleine, echte Werte, je Bedeutung ein Akzent (überfällig =
+  `--color-danger`). Das Band erscheint nur, wenn es datum-getriebenes Signal gibt.
+* **Datums-Buckets** als Rückgrat der Liste: `overdue → today → this week → later → no date → done`.
+  Die Sortierung (Priorität/Aufwand/Deadline) ordnet **innerhalb** der Buckets; der manuelle
+  („custom") Drag-Modus ist naturgemäß flach und gruppiert nicht. Nur die zwei dringlichen Bucket-
+  Labels (`overdue`, `today`) tragen Farbe, damit der Akzent bedeutungstragend bleibt.
+* **Kontext-Rail** (rechts, füllt sonst toten Raum auf breiten Schirmen): eine zweite Achse auf denselben
+  Daten – `week ahead` (7-Tage-Überblick mit Zähl-Balken) und `by project` (offene Zähler, Klick
+  filtert die Liste). Selbe Vokabel wie die Sidebar-Navigation, flach (keine Cards).
+
+**Struktur, nicht flüssige Typografie** (Product-Register): Der zweispaltige Arbeitsbereich (`minmax(0,
+1fr) 296px`) ist auf ~1080px zentriert; unter 1080px entfällt die Rail (eine ruhige Einzelspalte),
+unter 760px klappt die Sidebar weg. Die Rail ist `sticky`. Das Skelett ist von der Akzent-Identität
+entkoppelt: ein späteres Design tauscht Tokens, nicht dieses Layout.
+
+### 4.2 Dashboard-Startseite („heute"-Home)
+
+Die Landing-View liefert das Kernversprechen („pad öffnen und sofort wissen, was ansteht"). **Erste
+Ausbaustufe** (bis konfigurierbare Widgets kommen): ein zeitbasierter Gruß, dieselben Live-Indikatoren
+wie das Focus-Band, und ein **Panel-Raster** — anders als die flache Liste sind hier **Cards richtig**
+(bounded overview objects, „Grid für 2D"): `today & overdue` (Fokusliste, volle Breite, Sprung in die
+to-dos), darunter `week ahead` + `by project` (dieselben Bausteine wie die Kontext-Rail), plus dezente
+gestrichelte „coming soon"-Kacheln für die noch fehlenden Module. Bewusste Trennung: **1D-Liste = flache
+Hairlines, 2D-Dashboard = Panels.**
 
 ---
 

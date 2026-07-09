@@ -7,6 +7,9 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
+    /* `@/*` import alias (mirrors vite.config resolve.alias; no baseUrl needed in bundler mode) */
+    "paths": { "@/*": ["./src/*"] },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

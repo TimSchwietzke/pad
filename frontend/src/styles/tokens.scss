@@ -1,5 +1,10 @@
 /* Design tokens — see DESIGN.md. Theming is two-dimensional: preset x mode.
-   Components read only these CSS custom properties and never the preset. */
+   Components read only these CSS custom properties, never the preset.
+
+   Two layers: a PRIMITIVE accent ramp (the identity color, in OKLCH) and the
+   SEMANTIC tokens (--color-*) that map onto it per preset×mode. Reskinning to a
+   future design = redefine the accent ramp (or a preset block); components never
+   change. The standard preset's identity is a teal/petrol, used restrained. */
 
 :root {
   /* scales (theme-independent) */
@@ -15,70 +20,110 @@
   --radius-lg: 16px;
   --radius-pill: 999px;
 
-  /* motion (theme-independent) — short, state-conveying transitions only.
-     ease-out so interactions decelerate naturally; never bounce/elastic. */
+  /* motion — short, state-conveying transitions; ease-out, never bounce/elastic */
   --motion-fast: 120ms;
-  --motion: 160ms;
+  --motion: 170ms;
+  --motion-slow: 260ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* keyboard focus ring — drawn with the brand color, used app-wide */
-  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--color-primary);
-
-  /* semantic z-index scale (sticky < dropdown < popover) */
+  /* semantic z-index scale (sticky < sidebar < dropdown < popover) */
   --z-sticky: 10;
+  --z-sidebar: 20;
   --z-dropdown: 30;
   --z-popover: 40;
 
-  /* preset "Standard" — semantic component tokens */
+  /* ---- primitive accent ramp: teal / petrol (hue ~195-207) ----
+     Swap THIS to reskin the whole app. Chroma peaks mid-ramp, eased at the ends. */
+  --accent-50: oklch(0.97 0.018 195);
+  --accent-100: oklch(0.93 0.035 195);
+  --accent-200: oklch(0.87 0.06 196);
+  --accent-300: oklch(0.79 0.088 197);
+  --accent-400: oklch(0.71 0.108 198);
+  --accent-500: oklch(0.63 0.113 199);
+  --accent-600: oklch(0.55 0.1 201);
+  --accent-700: oklch(0.47 0.084 203);
+  --accent-800: oklch(0.39 0.064 205);
+  --accent-900: oklch(0.31 0.045 207);
+
+  /* preset "Standard" — semantic component tokens (shape + type) */
   --font-family-base: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --radius-button: var(--radius-sm);
   --radius-input: var(--radius-sm);
   --radius-card: var(--radius-md);
   --radius-badge: var(--radius-sm);
+
+  /* ================= preset "Standard" — LIGHT ================= */
+  /* Neutrals are faintly tinted toward the accent (cohesion, not "warm by default"). */
+  --color-bg-app: oklch(0.985 0.004 210); /* canvas */
+  --color-bg-sidebar: oklch(0.972 0.006 210); /* recedes behind cards */
+  --color-bg-surface: oklch(1 0 0); /* raised: cards, rows, topbar */
+  --color-bg-surface-2: oklch(0.965 0.006 210); /* hover / secondary fill */
+  --color-bg-surface-3: oklch(1 0 0); /* overlays (popover) — lifted by shadow */
+  --color-border: oklch(0.915 0.008 210); /* hairline dividers */
+  --color-border-strong: oklch(0.86 0.01 210); /* inputs / interactive edges */
+  --color-sidebar-active: oklch(0.955 0.03 197); /* teal wash */
+
+  --color-text-primary: oklch(0.26 0.012 220);
+  --color-text-secondary: oklch(0.47 0.012 220);
+  --color-text-placeholder: oklch(0.58 0.011 220);
+
+  --color-primary: var(--accent-700); /* AA as fill (white text) & as text on white */
+  --color-primary-hover: var(--accent-800);
+  --color-primary-bg: oklch(0.955 0.03 197); /* subtle tint for active/selected */
   --color-on-primary: #ffffff;
 
-  /* preset "Standard" — colors (light = Excel) */
-  --color-bg-app: #f7f8fa;
-  --color-bg-surface: #ffffff;
-  --color-bg-surface-2: #f1f3f5;
-  --color-border: #e3e6ea;
-  --color-sidebar-active: #e9f2ff;
-  --color-text-primary: #1f2329;
-  --color-text-secondary: #5c636a;
-  --color-text-placeholder: #868e96;
-  --color-primary: #0d6efd;
-  --color-primary-hover: #0b5ed7;
-  --color-primary-bg: #e9f2ff;
-  --color-danger: #dc3545;
-  --color-danger-bg: #f8d7da;
-  --color-success: #198754;
-  --color-success-bg: #d1e7dd;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --color-danger: oklch(0.55 0.19 25);
+  --color-danger-bg: oklch(0.95 0.04 25);
+  --color-success: oklch(0.52 0.12 155);
+  --color-success-bg: oklch(0.95 0.04 155);
+
+  /* elevation — soft, layered, low-opacity (real depth in light mode) */
+  --shadow-sm: 0 1px 2px oklch(0.4 0.03 220 / 0.06);
+  --shadow-md: 0 2px 4px oklch(0.4 0.03 220 / 0.05), 0 6px 16px oklch(0.4 0.03 220 / 0.07);
+  --shadow-lg: 0 4px 10px oklch(0.4 0.03 220 / 0.06), 0 16px 40px oklch(0.4 0.03 220 / 0.1);
+  /* accent glow for the one or two signature focus moments */
+  --shadow-glow: 0 0 0 1px oklch(0.55 0.1 201 / 0.35), 0 4px 18px oklch(0.55 0.1 201 / 0.18);
+
+  /* keyboard focus ring — accent, offset by the surface it sits on */
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--accent-500);
 }
 
-/* preset "Standard" — dark (Notion) */
+/* ================= preset "Standard" — DARK (the hero) ================= */
+/* Depth comes from surface LIGHTNESS steps (16 -> 20 -> 24 -> 27), not shadow;
+   a teal-tinted near-black keeps it cohesive with the accent. */
 [data-mode='dark'] {
-  --color-bg-app: #191919;
-  --color-bg-surface: #202020;
-  --color-bg-surface-2: #262626;
-  --color-border: #333333;
-  --color-sidebar-active: #1c2a3a;
-  --color-text-primary: #ededed;
-  --color-text-secondary: #a1a1a1;
-  --color-text-placeholder: #6b7280;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #60a5fa;
-  --color-primary-bg: #1c2a3a;
-  --color-danger: #f87171;
-  --color-danger-bg: #3a1d1f;
-  --color-success: #4ade80;
-  --color-success-bg: #14301f;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --color-bg-app: oklch(0.16 0.008 220); /* canvas — darkest */
+  --color-bg-sidebar: oklch(0.16 0.008 220); /* recedes into the canvas */
+  --color-bg-surface: oklch(0.205 0.009 220); /* raised: cards, rows, topbar */
+  --color-bg-surface-2: oklch(0.245 0.01 220); /* hover / secondary fill */
+  --color-bg-surface-3: oklch(0.265 0.011 220); /* overlays (popover) */
+  --color-border: oklch(0.28 0.012 220); /* hairline */
+  --color-border-strong: oklch(0.35 0.014 220);
+  --color-sidebar-active: oklch(0.3 0.045 202); /* dark teal panel */
+
+  --color-text-primary: oklch(0.94 0.006 220);
+  --color-text-secondary: oklch(0.71 0.01 220);
+  --color-text-placeholder: oklch(0.62 0.011 220);
+
+  --color-primary: var(--accent-400); /* bright teal for AA on dark */
+  --color-primary-hover: var(--accent-300);
+  --color-primary-bg: oklch(0.3 0.045 202);
+  --color-on-primary: oklch(0.17 0.02 220); /* dark text on the bright teal fill */
+
+  --color-danger: oklch(0.68 0.16 25);
+  --color-danger-bg: oklch(0.3 0.08 25);
+  --color-success: oklch(0.72 0.14 155);
+  --color-success-bg: oklch(0.28 0.06 155);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / 0.35), 0 8px 24px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 4px 12px rgb(0 0 0 / 0.4), 0 20px 48px rgb(0 0 0 / 0.5);
+  --shadow-glow: 0 0 0 1px oklch(0.71 0.108 198 / 0.4), 0 4px 20px oklch(0.71 0.108 198 / 0.22);
+
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px var(--accent-400);
 }
 
-/* preset "Google" — light */
+/* ================= preset "Google" — LIGHT (unchanged identity) ================= */
 [data-preset='google'] {
   --font-family-base: 'Google Sans', Roboto, system-ui, sans-serif;
   --radius-button: var(--radius-pill);
@@ -87,32 +132,45 @@
   --radius-badge: var(--radius-pill);
 
   --color-bg-app: #ffffff;
+  --color-bg-sidebar: #ffffff;
   --color-bg-surface: #ffffff;
   --color-bg-surface-2: #f1f3f4;
+  --color-bg-surface-3: #ffffff;
   --color-border: #dadce0;
+  --color-border-strong: #c4c7c5;
   --color-sidebar-active: #e8f0fe;
   --color-text-primary: #202124;
   --color-text-secondary: #5f6368;
-  --color-text-placeholder: #80868b;
+  --color-text-placeholder: #70757a;
   --color-primary: #1a73e8;
   --color-primary-hover: #185abc;
   --color-primary-bg: #e8f0fe;
+  --color-on-primary: #ffffff;
   --color-danger: #d93025;
   --color-danger-bg: #fce8e6;
   --color-success: #1e8e3e;
   --color-success-bg: #e6f4ea;
+
+  --shadow-sm: 0 1px 2px rgb(60 64 67 / 0.1);
+  --shadow-md: 0 1px 3px rgb(60 64 67 / 0.12), 0 4px 8px rgb(60 64 67 / 0.1);
+  --shadow-lg: 0 2px 6px rgb(60 64 67 / 0.15), 0 8px 24px rgb(60 64 67 / 0.15);
+  --shadow-glow: 0 0 0 3px rgb(26 115 232 / 0.25);
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px #1a73e8;
 }
 
-/* preset "Google" — dark (dark text on the light-blue primary) */
+/* ================= preset "Google" — DARK (unchanged identity) ================= */
 [data-preset='google'][data-mode='dark'] {
   --color-bg-app: #202124;
+  --color-bg-sidebar: #202124;
   --color-bg-surface: #292a2d;
   --color-bg-surface-2: #35363a;
+  --color-bg-surface-3: #35363a;
   --color-border: #3c4043;
+  --color-border-strong: #5f6368;
   --color-sidebar-active: #283b53;
   --color-text-primary: #e8eaed;
   --color-text-secondary: #9aa0a6;
-  --color-text-placeholder: #80868b;
+  --color-text-placeholder: #9aa0a6;
   --color-primary: #8ab4f8;
   --color-primary-hover: #aecbfa;
   --color-primary-bg: #283b53;
@@ -121,4 +179,10 @@
   --color-danger-bg: #3a1e1b;
   --color-success: #81c995;
   --color-success-bg: #1e331f;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 4px 8px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-glow: 0 0 0 3px rgb(138 180 248 / 0.3);
+  --focus-ring: 0 0 0 2px var(--color-bg-surface), 0 0 0 4px #8ab4f8;
 }

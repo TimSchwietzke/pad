@@ -25,9 +25,20 @@ function makeTodo(over: Partial<Todo> = {}): Todo {
   }
 }
 
-/** Opens the dashboard and navigates from the home view into the to-dos view. */
+/** ISO timestamp at local midnight, `n` days from today — for deadline-relative tests. */
+function dayOffsetIso(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
+}
+
+/**
+ * Renders, opens the collapsible nav sidebar (module nav lives there now), and navigates
+ * into the to-dos view.
+ */
 async function openTodos(user: ReturnType<typeof userEvent.setup>) {
   renderWithClient(<TodoDashboard />)
+  await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
   await user.click(await screen.findByRole('button', { name: 'to-dos' }))
 }
 
@@ -94,6 +105,7 @@ describe('TodoDashboard', () => {
     resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
     const user = userEvent.setup()
     const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     await screen.findByText('alpha')
 
@@ -124,6 +136,7 @@ describe('TodoDashboard', () => {
     })
     const user = userEvent.setup()
     const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
 
     const titles = () => [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
@@ -145,6 +158,7 @@ describe('TodoDashboard', () => {
   it('changes the preset from the settings view and persists it', async () => {
     const user = userEvent.setup()
     renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'settings' }))
 
     expect(document.documentElement.dataset.preset).toBe('standard')
@@ -157,6 +171,7 @@ describe('TodoDashboard', () => {
   it('moved the preset toggle out of the top bar', async () => {
     const user = userEvent.setup()
     renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     // the old std/goog top-bar toggle is gone; preset lives in settings now
     expect(screen.queryByRole('button', { name: /^(std|goog)$/ })).not.toBeInTheDocument()
@@ -192,6 +207,7 @@ describe('TodoDashboard', () => {
     resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
     const user = userEvent.setup()
     renderWithClient(<TodoDashboard doneGraceMs={80} />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
 
     await user.click(await screen.findByRole('checkbox', { name: /mark done/i }))
@@ -205,6 +221,7 @@ describe('TodoDashboard', () => {
     resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
     const user = userEvent.setup()
     renderWithClient(<TodoDashboard doneGraceMs={500} />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
 
     await user.click(await screen.findByRole('checkbox', { name: /mark done/i }))
@@ -224,6 +241,7 @@ describe('TodoDashboard', () => {
     })
     const user = userEvent.setup()
     const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
 
     // default filter: open only
@@ -254,6 +272,7 @@ describe('TodoDashboard', () => {
     })
     const user = userEvent.setup()
     const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     await screen.findByText('loose task')
 
@@ -263,6 +282,95 @@ describe('TodoDashboard', () => {
 
     expect(screen.getByText('work task')).toBeInTheDocument()
     expect(screen.queryByText('loose task')).not.toBeInTheDocument()
+  })
+
+  it('surfaces overdue and due-today indicators in the focus band', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'ship it', due_at: dayOffsetIso(-1), estimate_minutes: 30 }),
+        makeTodo({ id: 2, title: 'call back', due_at: dayOffsetIso(0), estimate_minutes: 60 }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('ship it')
+
+    const stats = within(container.querySelector('.focusband__stats') as HTMLElement)
+    expect(stats.getByText('overdue')).toBeInTheDocument()
+    expect(stats.getByText('due today')).toBeInTheDocument()
+    // today's effort = 30 (overdue) + 60 (due today)
+    expect(stats.getByText('1 h 30 min')).toBeInTheDocument()
+  })
+
+  it('groups the list into date buckets, most urgent first', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'later task', due_at: dayOffsetIso(20) }),
+        makeTodo({ id: 2, title: 'overdue task', due_at: dayOffsetIso(-2) }),
+        makeTodo({ id: 3, title: 'today task', due_at: dayOffsetIso(0) }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('overdue task')
+
+    const labels = [...container.querySelectorAll('.todo-group__label')].map((n) => n.textContent)
+    expect(labels).toEqual(['overdue', 'today', 'later'])
+    // tasks land in bucket order regardless of the fetched order
+    const titles = [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    expect(titles).toEqual(['overdue task', 'today task', 'later task'])
+  })
+
+  it('filters the list from the rail by-project panel', async () => {
+    resetDb({
+      projects: [{ id: 1, name: 'work', color: '#f00', created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z' }],
+      todos: [
+        makeTodo({ id: 1, title: 'work task', project_id: 1 }),
+        makeTodo({ id: 2, title: 'loose task' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('loose task')
+
+    const rail = within(container.querySelector('.rail') as HTMLElement)
+    await user.click(rail.getByRole('button', { name: /work/ }))
+
+    expect(screen.getByText('work task')).toBeInTheDocument()
+    expect(screen.queryByText('loose task')).not.toBeInTheDocument()
+  })
+
+  it('keeps the sidebar collapsed by default and toggles it open, persisting the choice', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await screen.findByRole('button', { name: 'toggle sidebar' })
+    const app = container.querySelector('.app') as HTMLElement
+
+    expect(app.dataset.sidebar).toBe('closed')
+    await user.click(screen.getByRole('button', { name: 'toggle sidebar' }))
+    expect(app.dataset.sidebar).toBe('open')
+    expect(JSON.parse(localStorage.getItem('pad.sidebar.open')!)).toBe(true)
+
+    // the same header toggle closes it again (no separate button on the panel)
+    await user.click(screen.getByRole('button', { name: 'toggle sidebar' }))
+    expect(app.dataset.sidebar).toBe('closed')
+  })
+
+  it('focuses the search field with the ⌘K / Ctrl+K shortcut', async () => {
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+    await screen.findByRole('button', { name: 'toggle sidebar' })
+
+    const search = screen.getByLabelText('search')
+    expect(search).not.toHaveFocus()
+    await user.keyboard('{Control>}k{/Control}')
+    expect(search).toHaveFocus()
   })
 
   it('shows an error state when the list fails to load', async () => {

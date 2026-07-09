@@ -2,8 +2,26 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { usePersistentState } from '../../core/usePersistentState'
 import { useCreateTodo, useProjects, useReorderTodos, useTags, useTodos, useUpdateTodo } from './hooks'
-import type { Priority, Project, Todo, TodoInput } from './types'
+import type { Priority, Project, Tag, Todo, TodoInput } from './types'
 import { DueField, EffortField, PriorityField, ProjectField } from './ParamFields'
+import { formatDue, formatEstimate } from './format'
+import { bucketLabel, bucketOf, bucketOrder, openDueOn, startOfDay, triageStats } from './triage'
+import type { Bucket } from './triage'
+import {
+  Search,
+  Moon,
+  Sun,
+  Bell,
+  Share,
+  Briefcase,
+  PanelLeft as PanelIcon,
+  ListFilter as Filter,
+  LayoutDashboard as Grid,
+  ListTodo as Check,
+  Calendar as Cal,
+  Settings as Gear,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
 type View = 'dashboard' | 'todos' | 'settings'
@@ -36,24 +54,14 @@ function pendingLabel(isPending: boolean, count: number): string {
   return `you have ${count} pending ${count === 1 ? 'task' : 'tasks'}`
 }
 
-// --- tiny inline icons (stroke, inherit color) ----------------------------
+// Module / shell icons come from lucide-react (see imports). A few list/create affordances
+// are still small hand-drawn glyphs — they'll follow to lucide in a later pass.
 const sv = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-const Search = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.2-4.2" /></svg>
 const Plus = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M12 5v14M5 12h14" /></svg>
-const Moon = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" /></svg>
-const Sun = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" /></svg>
-const Cal = () => <svg width="15" height="15" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M7 3v4M17 3v4M4 10h16" /></svg>
-const Grid = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></svg>
-const Check = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M5 12.5l4 4L19 7" /></svg>
-const Bell = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M6 9a6 6 0 0112 0c0 4.5 1.2 5.8 2.2 6.8.4.4.1 1.2-.5 1.2H4.3c-.6 0-.9-.8-.5-1.2C4.8 14.8 6 13.5 6 9z" /><path d="M10.2 20a1.9 1.9 0 003.6 0" /></svg>
-// custom-drawn icons (no third-party assets) — funnel for filter, export-up for share
-const Filter = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-const Share = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M12 15V4M8.5 7.5L12 4l3.5 3.5" /><path d="M5 13v5a2 2 0 002 2h10a2 2 0 002-2v-5" /></svg>
 const Rows = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="6" rx="1.5" /><rect x="4" y="13" width="16" height="6" rx="1.5" /></svg>
 const Lines = () => <svg width="16" height="16" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
 // six-dot drag affordance — a placeholder for the future custom-priority handle
 const Grip = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>
-const Gear = () => <svg width="18" height="18" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.7 7.7 0 000-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1L15 2.5h-4l-.4 2.5a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.7 7.7 0 000 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4z" /></svg>
 
 /** A small round avatar placeholder (auth/account logic comes later). */
 function Avatar({ size = 32 }: { size?: number }) {
@@ -81,6 +89,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   )
   const [density, setDensity] = usePersistentState<Density>('pad.density', 'comfortable')
+  // The nav sidebar is fully collapsed by default; opening it slides an elevated panel in
+  // and pushes the content over (persisted, like the Claude desktop sidebar).
+  const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>('pad.sidebar.open', false)
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
 
@@ -95,6 +106,22 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     root.dataset.preset = preset
     root.dataset.mode = mode
   }, [preset, mode])
+
+  // ⌘K / Ctrl+K focuses the search — a familiar "jump to" entry point (a full
+  // command palette lands later; for now it's a quick way to reach the search field).
+  const searchRef = useRef<HTMLInputElement>(null)
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+      }
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setSidebarOpen])
 
   const projects = useProjects()
   const tags = useTags()
@@ -248,257 +275,473 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
         : [...scoped.filter((t) => t.status === 'open'), ...scoped.filter((t) => t.status === 'done')]
   const filterActive = statusFilter !== 'open' || activeProject != null
 
+  // Live triage indicators for the focus band, computed over the (project-scoped) list.
+  const stats = triageStats(scoped)
+
+  // The list's spine: group the visible tasks into time-to-deadline buckets, with the
+  // chosen sort ordering within each. A manual (custom) order is inherently flat, so it
+  // opts out of grouping. Headers only appear once there's more than one bucket to name.
+  type ListRow = { kind: 'header'; bucket: Bucket; count: number } | { kind: 'todo'; todo: Todo }
+  const listRows: ListRow[] = []
+  if (isCustom) {
+    for (const t of visible) listRows.push({ kind: 'todo', todo: t })
+  } else {
+    const byBucket = new Map<Bucket, Todo[]>()
+    for (const t of visible) {
+      const b = bucketOf(t, leaving.has(t.id))
+      const arr = byBucket.get(b)
+      if (arr) arr.push(t)
+      else byBucket.set(b, [t])
+    }
+    const nonEmpty = bucketOrder.filter((b) => (byBucket.get(b)?.length ?? 0) > 0)
+    const showHeaders = nonEmpty.length > 1
+    for (const b of nonEmpty) {
+      const arr = byBucket.get(b)!
+      if (showHeaders) listRows.push({ kind: 'header', bucket: b, count: arr.length })
+      for (const t of arr) listRows.push({ kind: 'todo', todo: t })
+    }
+  }
+
   return (
-    <div className="app" data-preset={preset} data-mode={mode}>
-      <aside className="sidebar">
-        <div className="sidebar__brand">
-          <span className="sidebar__name">pad</span>
-          <span className="sidebar__tagline">productivity workspace</span>
-        </div>
-
-        <nav className="nav" aria-label="views">
-          <button className={`nav__item${view === 'dashboard' ? ' is-active' : ''}`} onClick={() => setView('dashboard')}>
-            <Grid /> dashboard
-          </button>
-          <button className={`nav__item${view === 'todos' ? ' is-active' : ''}`} onClick={() => setView('todos')}>
-            <Check /> to-dos
-          </button>
-          <button className="nav__item" disabled><Cal /> calendar</button>
-          <button className="nav__item" disabled><Grid /> applications</button>
-        </nav>
-
-        <SidebarSection label="projects">
-          {(projects.data ?? []).map((p) => (
-            <div className="project" key={p.id}>
-              <span className="project__dot" style={{ background: p.color || 'var(--color-text-secondary)' }} />
-              <span className="project__name">{p.name}</span>
-            </div>
-          ))}
-          {projects.data?.length === 0 && <p className="sidebar__empty">no projects yet</p>}
-        </SidebarSection>
-
-        <SidebarSection label="tags">
-          <div className="tag-row">
-            {(tags.data ?? []).map((t) => (
-              <span className="tag" key={t.id}>#{t.name}</span>
-            ))}
-            {tags.data?.length === 0 && <p className="sidebar__empty">no tags yet</p>}
-          </div>
-        </SidebarSection>
-
-        <div className="sidebar__footer">
-          <button
-            className={`nav__item${view === 'settings' ? ' is-active' : ''}`}
-            onClick={() => setView('settings')}
+    <div className="app" data-preset={preset} data-mode={mode} data-sidebar={sidebarOpen ? 'open' : 'closed'}>
+      {/* full-width header: the panel toggle sits top-left in one fixed spot, the search
+          stays window-centred, and the bar itself is transparent (dissolves into the canvas). */}
+      <header className="topbar">
+        <div className="topbar__lead">
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            className="h-8 w-8 [&_svg]:size-[18px]"
+            aria-label="toggle sidebar"
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen((v) => !v)}
           >
-            <Gear /> settings
-          </button>
-          <button className="account" type="button">
-            <Avatar />
-            <span className="account__text">
-              <span className="account__name">account</span>
-              <span className="account__sub">local mode</span>
-            </span>
-          </button>
+            <PanelIcon />
+          </Button>
         </div>
-      </aside>
+        <label className="search">
+          <Search />
+          <input ref={searchRef} placeholder="search or jump to…" aria-label="search" />
+          <span className="search__kbd" aria-hidden>{isMac ? '⌘K' : 'Ctrl K'}</span>
+        </label>
+        <div className="topbar__actions">
+          {/* preset lives in settings now; light/dark stays a quick top-bar toggle */}
+          <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
+            {mode === 'light' ? <Moon /> : <Sun />}
+          </Button>
+          {/* notifications — surface lands with a later module */}
+          <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" aria-label="notifications"><Bell /></Button>
+          <span className="topbar__divider" aria-hidden />
+          <button className="avatar-btn" aria-label="account"><Avatar size={30} /></button>
+        </div>
+      </header>
 
-      <main className="main">
-        <header className="topbar">
-          <label className="search">
-            <Search />
-            <input placeholder="search tasks, projects…" aria-label="search" />
-          </label>
-          <div className="topbar__actions">
-            {/* preset lives in settings now; light/dark stays a quick top-bar toggle */}
-            <button className="icon-btn" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
-              {mode === 'light' ? <Moon /> : <Sun />}
-            </button>
-            {/* notifications — surface lands with a later module */}
-            <button className="icon-btn" aria-label="notifications"><Bell /></button>
-            <span className="topbar__divider" aria-hidden />
-            <button className="avatar-btn" aria-label="account"><Avatar size={34} /></button>
+      <div className="workspace">
+        {/* global nav — a fully collapsible, elevated card that begins below the header.
+            Closed by default; the header toggle opens it, pushing the content over. Module
+            context (projects, tags) lives in the to-dos view. Inert while closed. */}
+        <aside className="sidebar" inert={!sidebarOpen}>
+          <div className="sidebar__inner">
+            <div className="sidebar__brand">
+              <span className="sidebar__mark" aria-hidden>p</span>
+              <span className="sidebar__word">
+                <span className="sidebar__name">pad</span>
+                <span className="sidebar__tagline">workspace</span>
+              </span>
+            </div>
+
+            <nav className="nav" aria-label="modules">
+              <button className={`nav__item${view === 'dashboard' ? ' is-active' : ''}`} onClick={() => setView('dashboard')}>
+                <span className="nav__icon"><Grid /></span>
+                <span className="nav__label">dashboard</span>
+              </button>
+              <button className={`nav__item${view === 'todos' ? ' is-active' : ''}`} onClick={() => setView('todos')}>
+                <span className="nav__icon"><Check /></span>
+                <span className="nav__label">to-dos</span>
+              </button>
+              <button className="nav__item" disabled>
+                <span className="nav__icon"><Cal /></span>
+                <span className="nav__label">calendar</span>
+              </button>
+              <button className="nav__item" disabled>
+                <span className="nav__icon"><Briefcase /></span>
+                <span className="nav__label">applications</span>
+              </button>
+            </nav>
+
+            <div className="sidebar__footer">
+              <button
+                className={`nav__item${view === 'settings' ? ' is-active' : ''}`}
+                onClick={() => setView('settings')}
+              >
+                <span className="nav__icon"><Gear /></span>
+                <span className="nav__label">settings</span>
+              </button>
+              <button className="nav__item account" type="button">
+                <span className="nav__icon"><Avatar size={24} /></span>
+                <span className="nav__label account__text">
+                  <span className="account__name">account</span>
+                  <span className="account__sub">local mode</span>
+                </span>
+              </button>
+            </div>
           </div>
-        </header>
+        </aside>
 
-        {view === 'dashboard' ? (
-          <DashboardView onGoToTodos={() => setView('todos')} />
-        ) : view === 'settings' ? (
-          <SettingsView
-            preset={preset}
-            setPreset={setPreset}
-            mode={mode}
-            setMode={setMode}
-            density={density}
-            setDensity={setDensity}
-          />
-        ) : (
-          <div className="content">
-            <div className="page-head page-head--row">
-              <div>
-                <h1 className="page-title">to-dos</h1>
-                <p className="page-sub">{pendingLabel(todos.isPending, openCount)}</p>
-              </div>
-              {/* share lands in its own slice (markdown export); shown as the entry point */}
-              <div className="page-head__actions">
-                <button
-                  className={`ghost-btn${filterActive ? ' is-active' : ''}`}
-                  type="button"
-                  aria-expanded={filterOpen}
-                  onClick={() => setFilterOpen((o) => !o)}
-                >
-                  <Filter /> filter
-                </button>
-                <button className="ghost-btn" type="button"><Share /> share</button>
-              </div>
-            </div>
-
-            {/* collapsible filter panel — slides open below the header */}
-            <div className={`filter-panel${filterOpen ? ' is-open' : ''}`}>
-              <div className="filter-panel__inner" inert={!filterOpen}>
-                <span className="controlbar__label">show</span>
-                {(['open', 'done', 'both'] as StatusFilter[]).map((key) => (
-                  <button
-                    key={key}
-                    className={`sort-pill${statusFilter === key ? ' is-active' : ''}`}
-                    onClick={() => setStatusFilter(key)}
-                  >
-                    {key}
-                  </button>
-                ))}
-                <span className="filter-panel__divider" aria-hidden />
-                <span className="controlbar__label">project</span>
-                <button
-                  className={`sort-pill${activeProject == null ? ' is-active' : ''}`}
-                  onClick={() => setProjectFilter(null)}
-                >
-                  all
-                </button>
-                {(projects.data ?? []).map((p) => (
-                  <button
-                    key={p.id}
-                    className={`sort-pill${activeProject === p.id ? ' is-active' : ''}`}
-                    onClick={() => setProjectFilter(p.id)}
-                  >
-                    <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} /> {p.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="controlbar">
-              <div className="controlbar__sort">
-                <span className="controlbar__label">sort by</span>
-                {(['priority', 'effort', 'deadline', 'custom'] as SortKey[]).map((key) => (
-                  <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
-                    {key}
-                  </button>
-                ))}
-              </div>
-              <div className="seg" role="group" aria-label="view density">
-                <button
-                  className={`seg__btn${density === 'comfortable' ? ' is-active' : ''}`}
-                  aria-pressed={density === 'comfortable'}
-                  title="comfortable"
-                  onClick={() => setDensity('comfortable')}
-                >
-                  <Rows />
-                </button>
-                <button
-                  className={`seg__btn${density === 'compact' ? ' is-active' : ''}`}
-                  aria-pressed={density === 'compact'}
-                  title="compact"
-                  onClick={() => setDensity('compact')}
-                >
-                  <Lines />
-                </button>
-              </div>
-            </div>
-
-            {/* sticky create row, pinned above the list (see CreateBar) */}
-            <CreateBar projects={projects.data ?? []} onCreate={handleCreate} />
-
-            {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
-
-            {!todos.isPending && !todos.isError && visible.length === 0 && (
-              <p className="state">nothing here — adjust the filters or create a task.</p>
-            )}
-
-            <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
-              {visible.map((todo) => {
-                const cls =
-                  'todo' +
-                  (todo.status === 'done' ? ' is-done' : '') +
-                  (dragId === todo.id ? ' is-dragging' : '') +
-                  (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
-                  (newId === todo.id ? ' is-new' : '') +
-                  (leaving.get(todo.id) === 'closing' ? ' is-leaving' : '')
-                return (
-                  <li
-                    className={cls}
-                    key={todo.id}
-                    data-todo-id={todo.id}
-                    draggable
-                    onDragStart={() => setDragId(todo.id)}
-                    onDragEnd={() => {
-                      setDragId(null)
-                      setOverId(null)
-                    }}
-                    onDragOver={(e) => {
-                      if (dragId !== null) {
-                        e.preventDefault()
-                        if (overId !== todo.id) setOverId(todo.id)
-                      }
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      dropOn(todo.id)
-                    }}
-                  >
-                    <button
-                      className="todo__check"
-                      role="checkbox"
-                      aria-checked={todo.status === 'done'}
-                      aria-label={todo.status === 'done' ? 'mark open' : 'mark done'}
-                      onClick={() => toggleDone(todo)}
-                    />
-                    <div className="todo__body">
-                      <div className="todo__line">
-                        <span className="todo__title">{todo.title}</span>
-                      </div>
-                      {/* inline param fields — set values show; empty ones reveal on hover/focus */}
-                      <div className="todo__params">
-                        <ProjectField value={todo.project_id} projects={projects.data ?? []} onChange={(v) => patchTodo(todo, { project_id: v })} />
-                        <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
-                        <PriorityField value={todo.priority} onChange={(v) => patchTodo(todo, { priority: v })} />
-                        <EffortField value={todo.estimate_minutes} onChange={(v) => patchTodo(todo, { estimate_minutes: v })} />
-                      </div>
+        <main className="main">
+          {view === 'dashboard' ? (
+            <DashboardView
+              todos={todos.data ?? []}
+              projects={projects.data ?? []}
+              onToggle={toggleDone}
+              onOpenTodos={() => setView('todos')}
+              onOpenProject={(id) => {
+                setProjectFilter(id)
+                setView('todos')
+              }}
+            />
+          ) : view === 'settings' ? (
+            <SettingsView
+              preset={preset}
+              setPreset={setPreset}
+              mode={mode}
+              setMode={setMode}
+              density={density}
+              setDensity={setDensity}
+            />
+          ) : (
+            <div className="todos-view">
+              <div className="todos-main">
+                {/* focus band: the page's anchor — title, a personal line, and the live
+                    triage indicators (overdue / due today / today's estimated effort) that
+                    make the state of the day readable at a glance (PRODUCT.md core). */}
+                <header className="focusband">
+                  <div className="focusband__top">
+                    <div>
+                      <h1 className="page-title">to-dos</h1>
+                      <p className="page-sub">{pendingLabel(todos.isPending, openCount)}</p>
                     </div>
-                    {/* in custom sort the handle is the drag affordance; otherwise a hint */}
-                    <span className="todo__handle" aria-hidden><Grip /></span>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        )}
-      </main>
+                    {/* share lands in its own slice (markdown export); shown as the entry point */}
+                    <div className="page-head__actions">
+                      <button
+                        className={`ghost-btn${filterActive ? ' is-active' : ''}`}
+                        type="button"
+                        aria-expanded={filterOpen}
+                        onClick={() => setFilterOpen((o) => !o)}
+                      >
+                        <Filter /> filter
+                      </button>
+                      <button className="ghost-btn" type="button"><Share /> share</button>
+                    </div>
+                  </div>
+                  {/* only lights up when there's date-driven signal — quiet when nothing's due */}
+                  {(stats.overdue > 0 || stats.dueToday > 0) && (
+                    <div className="focusband__stats">
+                      {stats.overdue > 0 && (
+                        <span className="stat stat--danger">
+                          <span className="stat__value">{stats.overdue}</span>
+                          <span className="stat__label">overdue</span>
+                        </span>
+                      )}
+                      {stats.dueToday > 0 && (
+                        <span className="stat">
+                          <span className="stat__value">{stats.dueToday}</span>
+                          <span className="stat__label">due today</span>
+                        </span>
+                      )}
+                      {stats.estTodayMinutes > 0 && (
+                        <span className="stat">
+                          <span className="stat__value">{formatEstimate(stats.estTodayMinutes)}</span>
+                          <span className="stat__label">est. today</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </header>
+
+                {/* collapsible filter panel — slides open below the header */}
+                <div className={`filter-panel${filterOpen ? ' is-open' : ''}`}>
+                  <div className="filter-panel__inner" inert={!filterOpen}>
+                    <span className="controlbar__label">show</span>
+                    {(['open', 'done', 'both'] as StatusFilter[]).map((key) => (
+                      <button
+                        key={key}
+                        className={`sort-pill${statusFilter === key ? ' is-active' : ''}`}
+                        onClick={() => setStatusFilter(key)}
+                      >
+                        {key}
+                      </button>
+                    ))}
+                    <span className="filter-panel__divider" aria-hidden />
+                    <span className="controlbar__label">project</span>
+                    <button
+                      className={`sort-pill${activeProject == null ? ' is-active' : ''}`}
+                      onClick={() => setProjectFilter(null)}
+                    >
+                      all
+                    </button>
+                    {(projects.data ?? []).map((p) => (
+                      <button
+                        key={p.id}
+                        className={`sort-pill${activeProject === p.id ? ' is-active' : ''}`}
+                        onClick={() => setProjectFilter(p.id)}
+                      >
+                        <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} /> {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="controlbar">
+                  <div className="controlbar__sort">
+                    <span className="controlbar__label">sort by</span>
+                    {(['priority', 'effort', 'deadline', 'custom'] as SortKey[]).map((key) => (
+                      <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
+                        {key}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="seg" role="group" aria-label="view density">
+                    <button
+                      className={`seg__btn${density === 'comfortable' ? ' is-active' : ''}`}
+                      aria-pressed={density === 'comfortable'}
+                      title="comfortable"
+                      onClick={() => setDensity('comfortable')}
+                    >
+                      <Rows />
+                    </button>
+                    <button
+                      className={`seg__btn${density === 'compact' ? ' is-active' : ''}`}
+                      aria-pressed={density === 'compact'}
+                      title="compact"
+                      onClick={() => setDensity('compact')}
+                    >
+                      <Lines />
+                    </button>
+                  </div>
+                </div>
+
+                {/* sticky create row, pinned above the list (see CreateBar) */}
+                <CreateBar projects={projects.data ?? []} onCreate={handleCreate} />
+
+                {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
+
+                {!todos.isPending && !todos.isError && visible.length === 0 && (
+                  <p className="state">nothing here — adjust the filters or create a task.</p>
+                )}
+
+                <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
+                  {listRows.map((row) => {
+                    if (row.kind === 'header')
+                      return (
+                        <li className={`todo-group todo-group--${row.bucket}`} key={`h-${row.bucket}`}>
+                          <span className="todo-group__label">{bucketLabel[row.bucket]}</span>
+                          <span className="todo-group__count">{row.count}</span>
+                        </li>
+                      )
+                    const todo = row.todo
+                    const cls =
+                      'todo' +
+                      (todo.status === 'done' ? ' is-done' : '') +
+                      (dragId === todo.id ? ' is-dragging' : '') +
+                      (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
+                      (newId === todo.id ? ' is-new' : '') +
+                      (leaving.get(todo.id) === 'closing' ? ' is-leaving' : '')
+                    return (
+                      <li
+                        className={cls}
+                        key={todo.id}
+                        data-todo-id={todo.id}
+                        draggable
+                        onDragStart={() => setDragId(todo.id)}
+                        onDragEnd={() => {
+                          setDragId(null)
+                          setOverId(null)
+                        }}
+                        onDragOver={(e) => {
+                          if (dragId !== null) {
+                            e.preventDefault()
+                            if (overId !== todo.id) setOverId(todo.id)
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          dropOn(todo.id)
+                        }}
+                      >
+                        <button
+                          className="todo__check"
+                          role="checkbox"
+                          aria-checked={todo.status === 'done'}
+                          aria-label={todo.status === 'done' ? 'mark open' : 'mark done'}
+                          onClick={() => toggleDone(todo)}
+                        />
+                        <div className="todo__body">
+                          <div className="todo__line">
+                            <span className="todo__title">{todo.title}</span>
+                          </div>
+                          {/* inline param fields — set values show; empty ones reveal on hover/focus */}
+                          <div className="todo__params">
+                            <ProjectField value={todo.project_id} projects={projects.data ?? []} onChange={(v) => patchTodo(todo, { project_id: v })} />
+                            <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
+                            <PriorityField value={todo.priority} onChange={(v) => patchTodo(todo, { priority: v })} />
+                            <EffortField value={todo.estimate_minutes} onChange={(v) => patchTodo(todo, { estimate_minutes: v })} />
+                          </div>
+                        </div>
+                        {/* in custom sort the handle is the drag affordance; otherwise a hint */}
+                        <span className="todo__handle" aria-hidden><Grip /></span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+
+              {/* context rail — fills the width with a second axis on the same data: the week
+                  ahead (temporal overview) and per-project counts (click to filter the list). */}
+              <aside className="rail" aria-label="overview">
+                <RailWeek todos={todos.data ?? []} />
+                <RailProjects
+                  projects={projects.data ?? []}
+                  todos={todos.data ?? []}
+                  active={activeProject}
+                  onPick={(id) => setProjectFilter(activeProject === id ? null : id)}
+                />
+                <RailTags tags={tags.data ?? []} />
+              </aside>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   )
 }
 
-/** Placeholder start page. Real configurable widgets land in a later slice. */
-function DashboardView({ onGoToTodos }: { onGoToTodos: () => void }) {
+/** Greeting keyed to the local hour — lowercase, human, no exclamation. */
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'good morning'
+  if (h < 18) return 'good afternoon'
+  return 'good evening'
+}
+
+/**
+ * The start page: a calm "today" home that pays off the triage design. A greeting, the same
+ * live indicators as the to-dos band, and a restrained panel grid reusing the module's own
+ * building blocks (a focus list of what's due now, week-ahead, by-project) plus placeholders
+ * for the modules still to come. Real configurable widgets replace this later; for now it's
+ * the honest default overview so the landing view isn't an empty box.
+ */
+function DashboardView({
+  todos,
+  projects,
+  onToggle,
+  onOpenTodos,
+  onOpenProject,
+}: {
+  todos: Todo[]
+  projects: Project[]
+  onToggle: (t: Todo) => void
+  onOpenTodos: () => void
+  onOpenProject: (id: number) => void
+}) {
+  const stats = triageStats(todos)
+  // what's actually on the plate: open tasks overdue or due today, most urgent first
+  const focus = todos
+    .filter((t) => {
+      const b = bucketOf(t, false)
+      return b === 'overdue' || b === 'today'
+    })
+    .sort((a, b) => ((a.due_at ?? '') < (b.due_at ?? '') ? -1 : 1))
+    .slice(0, 6)
+
   return (
-    <div className="content">
-      <div className="page-head">
-        <h1 className="page-title">dashboard</h1>
-        <p className="page-sub">your overview at a glance.</p>
-      </div>
-      <div className="dash-placeholder">
-        <Grid />
-        <p>configurable widgets are coming here — pick what shows up where (to-dos, calendar, …).</p>
-        <button className="btn" onClick={onGoToTodos}>open to-dos</button>
+    <div className="content dashboard">
+      <header className="focusband">
+        <div className="focusband__top">
+          <div>
+            <h1 className="page-title">{greeting()}</h1>
+            <p className="page-sub">here's what's on your plate today.</p>
+          </div>
+        </div>
+        {(stats.overdue > 0 || stats.dueToday > 0) && (
+          <div className="focusband__stats">
+            {stats.overdue > 0 && (
+              <span className="stat stat--danger">
+                <span className="stat__value">{stats.overdue}</span>
+                <span className="stat__label">overdue</span>
+              </span>
+            )}
+            {stats.dueToday > 0 && (
+              <span className="stat">
+                <span className="stat__value">{stats.dueToday}</span>
+                <span className="stat__label">due today</span>
+              </span>
+            )}
+            {stats.estTodayMinutes > 0 && (
+              <span className="stat">
+                <span className="stat__value">{formatEstimate(stats.estTodayMinutes)}</span>
+                <span className="stat__label">est. today</span>
+              </span>
+            )}
+          </div>
+        )}
+      </header>
+
+      <div className="dash-grid">
+        <section className="dash-panel dash-panel--wide">
+          <div className="dash-panel__head">
+            <h2 className="rail__title">today &amp; overdue</h2>
+            <button className="dash-link" type="button" onClick={onOpenTodos}>open to-dos →</button>
+          </div>
+          {focus.length === 0 ? (
+            <p className="dash-empty">nothing due right now — you're clear.</p>
+          ) : (
+            <ul className="dash-tasks">
+              {focus.map((t) => {
+                const due = formatDue(t.due_at)
+                return (
+                  <li className="dash-task" key={t.id}>
+                    <button
+                      className="todo__check"
+                      role="checkbox"
+                      aria-checked={false}
+                      aria-label="mark done"
+                      onClick={() => onToggle(t)}
+                    />
+                    <span className="dash-task__title">{t.title}</span>
+                    {due && <span className={`dash-task__meta${due.overdue ? ' is-overdue' : ''}`}>{due.label}</span>}
+                    {t.estimate_minutes != null && <span className="dash-task__meta">{formatEstimate(t.estimate_minutes)}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="dash-panel">
+          <RailWeek todos={todos} />
+        </section>
+        <section className="dash-panel">
+          <RailProjects projects={projects} todos={todos} active={null} onPick={onOpenProject} />
+        </section>
+
+        <div className="dash-tiles">
+          <div className="dash-tile" aria-hidden>
+            <Cal />
+            <span className="dash-tile__text">
+              <span className="dash-tile__title">calendar</span>
+              <span className="dash-tile__sub">coming soon</span>
+            </span>
+          </div>
+          <div className="dash-tile" aria-hidden>
+            <Briefcase />
+            <span className="dash-tile__text">
+              <span className="dash-tile__title">applications</span>
+              <span className="dash-tile__sub">coming soon</span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -588,13 +831,103 @@ function OptionGroup<T extends string>({
   )
 }
 
-/** A labelled sidebar group. */
-function SidebarSection({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * Rail: the user's tags. Read-only for now (per-task tagging is a later slice); it lives in
+ * the module's context rail rather than the global nav, keeping that chrome module-agnostic.
+ */
+function RailTags({ tags }: { tags: Tag[] }) {
   return (
-    <div className="sidebar__section">
-      <span className="sidebar__label">{label}</span>
-      {children}
-    </div>
+    <section className="rail__panel">
+      <h2 className="rail__title">tags</h2>
+      {tags.length === 0 ? (
+        <p className="rail__empty">no tags yet</p>
+      ) : (
+        <div className="tag-row">
+          {tags.map((t) => (
+            <span className="tag" key={t.id}>#{t.name}</span>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Rail: week-ahead strip. The next seven days, each with a count (and a proportional bar)
+ * of open tasks due that day — a temporal overview the date-grouped list doesn't surface
+ * directly. Read-only; purely orienting.
+ */
+function RailWeek({ todos }: { todos: Todo[] }) {
+  const today = startOfDay(new Date())
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(today + i * 86_400_000)
+    return { date, count: openDueOn(todos, date) }
+  })
+  const max = Math.max(1, ...days.map((d) => d.count))
+  const weekday = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short' }).toLowerCase()
+  return (
+    <section className="rail__panel">
+      <h2 className="rail__title">week ahead</h2>
+      <div className="rail-week">
+        {days.map(({ date, count }, i) => (
+          <div className={`rail-day${i === 0 ? ' is-today' : ''}`} key={i}>
+            <span className="rail-day__label">{i === 0 ? 'today' : weekday(date)}</span>
+            <span className="rail-day__track">
+              <span className="rail-day__bar" style={{ width: `${(count / max) * 100}%` }} />
+            </span>
+            <span className="rail-day__count">{count || ''}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Rail: per-project open-task counts — a second axis over the same list. Clicking a
+ * project scopes the list to it (the parent toggles it off when already active). Tasks
+ * with no project are shown as a static count, since the list has no "unassigned" filter.
+ */
+function RailProjects({
+  projects,
+  todos,
+  active,
+  onPick,
+}: {
+  projects: Project[]
+  todos: Todo[]
+  active: number | null
+  onPick: (id: number) => void
+}) {
+  const open = todos.filter((t) => t.status === 'open')
+  const countFor = (id: number | null) => open.filter((t) => t.project_id === id).length
+  const noProject = countFor(null)
+  return (
+    <section className="rail__panel">
+      <h2 className="rail__title">by project</h2>
+      <div className="rail-proj">
+        {projects.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className={`rail-proj__row${active === p.id ? ' is-active' : ''}`}
+            onClick={() => onPick(p.id)}
+          >
+            <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} />
+            <span className="rail-proj__name">{p.name}</span>
+            <span className="rail-proj__count">{countFor(p.id)}</span>
+          </button>
+        ))}
+        {noProject > 0 && (
+          <div className="rail-proj__row rail-proj__row--static">
+            <span className="dot" style={{ background: 'var(--color-border-strong)' }} />
+            <span className="rail-proj__name">no project</span>
+            <span className="rail-proj__count">{noProject}</span>
+          </div>
+        )}
+        {projects.length === 0 && noProject === 0 && <p className="rail__empty">no projects yet</p>}
+      </div>
+    </section>
   )
 }
 
