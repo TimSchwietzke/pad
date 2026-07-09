@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { usePersistentState } from '../../core/usePersistentState'
-import { useCreateTodo, useProjects, useReorderTodos, useTags, useTodos, useUpdateTodo } from './hooks'
+import {
+  useAddTodoTag,
+  useCreateTag,
+  useCreateTodo,
+  useProjects,
+  useRemoveTodoTag,
+  useReorderTodos,
+  useTags,
+  useTodos,
+  useUpdateTodo,
+} from './hooks'
 import type { Priority, Project, Tag, Todo, TodoInput } from './types'
-import { DueField, EffortField, PriorityField, ProjectField } from './ParamFields'
+import { DueField, EffortField, PriorityField, ProjectField, TagsField } from './ParamFields'
 import { formatDue, formatEstimate } from './format'
 import { bucketLabel, bucketOf, bucketOrder, openDueOn, startOfDay, triageStats } from './triage'
 import type { Bucket } from './triage'
@@ -100,6 +110,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   // open/closed state is deliberately ephemeral.
   const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>('pad.filter.status', 'open')
   const [projectFilter, setProjectFilter] = usePersistentState<number | null>('pad.filter.project', null)
+  const [tagFilter, setTagFilter] = usePersistentState<number | null>('pad.filter.tag', null)
   const [filterOpen, setFilterOpen] = useState(false)
 
   useEffect(() => {
@@ -130,6 +141,17 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const create = useCreateTodo()
   const update = useUpdateTodo()
   const reorder = useReorderTodos()
+  const createTag = useCreateTag()
+  const addTag = useAddTodoTag()
+  const removeTag = useRemoveTodoTag()
+
+  /** Toggle a tag on a todo; the list refetch (tags are embedded) updates the row. */
+  const toggleTag = (todoId: number, tagId: number, on: boolean) =>
+    on ? removeTag.mutate({ todoId, tagId }) : addTag.mutate({ todoId, tagId })
+
+  /** Create a tag and immediately attach it to the todo. */
+  const createAndAttachTag = (todoId: number, name: string) =>
+    createTag.mutate(name, { onSuccess: (tag) => addTag.mutate({ todoId, tagId: tag.id }) })
 
   // Drag-to-reorder works from any sort. dragId is the row being dragged, overId
   // the row it's hovering, so we can show a drop indicator.
@@ -262,19 +284,25 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
 
   const openCount = (todos.data ?? []).filter((t) => t.status === 'open').length
 
-  // What the list actually shows. The project filter guards against a stale
-  // persisted id (project deleted meanwhile); with "open", tasks in their grace
-  // period stay visible; with "both", done tasks sink below the open ones.
+  // What the list actually shows. The project/tag filters guard against a stale
+  // persisted id (the project or tag was deleted meanwhile); with "open", tasks in
+  // their grace period stay visible; with "both", done tasks sink below the open ones.
   const projectIds = new Set((projects.data ?? []).map((p) => p.id))
+  const tagIds = new Set((tags.data ?? []).map((t) => t.id))
   const activeProject = projectFilter != null && projectIds.has(projectFilter) ? projectFilter : null
-  const scoped = activeProject == null ? (todos.data ?? []) : (todos.data ?? []).filter((t) => t.project_id === activeProject)
+  const activeTag = tagFilter != null && tagIds.has(tagFilter) ? tagFilter : null
+  const scoped = (todos.data ?? []).filter(
+    (t) =>
+      (activeProject == null || t.project_id === activeProject) &&
+      (activeTag == null || t.tags.some((tg) => tg.id === activeTag)),
+  )
   const visible =
     statusFilter === 'open'
       ? scoped.filter((t) => t.status === 'open' || leaving.has(t.id))
       : statusFilter === 'done'
         ? scoped.filter((t) => t.status === 'done')
         : [...scoped.filter((t) => t.status === 'open'), ...scoped.filter((t) => t.status === 'done')]
-  const filterActive = statusFilter !== 'open' || activeProject != null
+  const filterActive = statusFilter !== 'open' || activeProject != null || activeTag != null
 
   // Live triage indicators for the focus band, computed over the (project-scoped) list.
   const stats = triageStats(scoped)
@@ -491,6 +519,27 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                         <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} /> {p.name}
                       </button>
                     ))}
+                    {(tags.data ?? []).length > 0 && (
+                      <>
+                        <span className="filter-panel__divider" aria-hidden />
+                        <span className="controlbar__label">tag</span>
+                        <button
+                          className={`sort-pill${activeTag == null ? ' is-active' : ''}`}
+                          onClick={() => setTagFilter(null)}
+                        >
+                          all
+                        </button>
+                        {(tags.data ?? []).map((t) => (
+                          <button
+                            key={t.id}
+                            className={`sort-pill${activeTag === t.id ? ' is-active' : ''}`}
+                            onClick={() => setTagFilter(t.id)}
+                          >
+                            #{t.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -588,6 +637,12 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                             <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
                             <PriorityField value={todo.priority} onChange={(v) => patchTodo(todo, { priority: v })} />
                             <EffortField value={todo.estimate_minutes} onChange={(v) => patchTodo(todo, { estimate_minutes: v })} />
+                            <TagsField
+                              value={todo.tags}
+                              allTags={tags.data ?? []}
+                              onToggle={(tagId, on) => toggleTag(todo.id, tagId, on)}
+                              onCreate={(name) => createAndAttachTag(todo.id, name)}
+                            />
                           </div>
                         </div>
                         {/* in custom sort the handle is the drag affordance; otherwise a hint */}
@@ -833,8 +888,8 @@ function OptionGroup<T extends string>({
 }
 
 /**
- * Rail: the user's tags. Read-only for now (per-task tagging is a later slice); it lives in
- * the module's context rail rather than the global nav, keeping that chrome module-agnostic.
+ * Rail: the user's tags, as a quiet overview. Assigning tags happens per-task in the list
+ * (TagsField) and filtering by tag lives in the filter panel; this panel just lists them.
  */
 function RailTags({ tags }: { tags: Tag[] }) {
   return (

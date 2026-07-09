@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
-import { Calendar as CalIcon, Clock as ClockIcon, Flag as FlagIcon, Folder as FolderIcon } from 'lucide-react'
+import {
+  Calendar as CalIcon,
+  Check as CheckIcon,
+  Clock as ClockIcon,
+  Flag as FlagIcon,
+  Folder as FolderIcon,
+  Tag as TagIcon,
+} from 'lucide-react'
 import { Popover } from '../../core/Popover'
-import type { Priority, Project } from './types'
+import type { Priority, Project, Tag } from './types'
 import { formatDue, formatEstimate, priorityLabel } from './format'
 
 // field icons — lucide, sized down for the small chips
@@ -298,6 +305,70 @@ export function DueField({ value, onChange }: { value: string | null; onChange: 
                 pick(new Date(y, m - 1, d).toISOString())
               }}
             />
+          </div>
+        </Menu>
+      </Popover>
+    </>
+  )
+}
+
+/**
+ * tags picker — multi-select over the user's tags, with an inline "create tag". Unlike the
+ * single-value fields it stays open while toggling, so several tags can be set in one go.
+ */
+export function TagsField({
+  value,
+  allTags,
+  onToggle,
+  onCreate,
+}: {
+  value: Tag[]
+  allTags: Tag[]
+  onToggle: (tagId: number, currentlyOn: boolean) => void
+  onCreate: (name: string) => void
+}) {
+  const f = useField()
+  const [draft, setDraft] = useState('')
+  const has = (id: number) => value.some((t) => t.id === id)
+  const create = () => {
+    const name = draft.trim()
+    if (!name) return
+    onCreate(name)
+    setDraft('')
+  }
+  return (
+    <>
+      <Chip
+        icon={<TagIcon size={14} />}
+        label={value.length ? value.map((t) => t.name).join(', ') : null}
+        placeholder="tags"
+        set={value.length > 0}
+        triggerRef={f.ref}
+        expanded={f.open}
+        onClick={() => f.setOpen((o) => !o)}
+      />
+      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
+        <Menu>
+          {allTags.map((t) => (
+            <MenuItem key={t.id} active={has(t.id)} onClick={() => onToggle(t.id, has(t.id))}>
+              <span className="menu-check">{has(t.id) && <CheckIcon size={14} />}</span>#{t.name}
+            </MenuItem>
+          ))}
+          {allTags.length === 0 && <p className="menu-empty">no tags yet</p>}
+          <div className="menu-input">
+            <input
+              value={draft}
+              placeholder="new tag…"
+              aria-label="new tag"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  create()
+                }
+              }}
+            />
+            <button type="button" className="menu-input__apply" onClick={create}>add</button>
           </div>
         </Menu>
       </Popover>

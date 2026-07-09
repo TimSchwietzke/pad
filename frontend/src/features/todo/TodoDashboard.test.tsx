@@ -19,6 +19,7 @@ function makeTodo(over: Partial<Todo> = {}): Todo {
     due_at: null,
     estimate_minutes: null,
     position: 0,
+    tags: [],
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
     ...over,
@@ -371,6 +372,44 @@ describe('TodoDashboard', () => {
     expect(search).not.toHaveFocus()
     await user.keyboard('{Control>}k{/Control}')
     expect(search).toHaveFocus()
+  })
+
+  it('assigns a tag to a todo from the tags field', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'write report' })],
+      tags: [{ id: 5, name: 'urgent' }],
+    })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('write report')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set tags' }))
+    await user.click(await screen.findByRole('menuitem', { name: '#urgent' }))
+
+    // after assigning + refetch, the tag shows on the row's chip
+    expect(await within(row).findByText('urgent')).toBeInTheDocument()
+  })
+
+  it('filters the list by tag', async () => {
+    resetDb({
+      tags: [{ id: 5, name: 'urgent' }],
+      todos: [
+        makeTodo({ id: 1, title: 'tagged task', tags: [{ id: 5, name: 'urgent' }] }),
+        makeTodo({ id: 2, title: 'plain task' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('plain task')
+
+    await user.click(screen.getByRole('button', { name: 'filter' }))
+    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
+    await user.click(panel.getByRole('button', { name: '#urgent' }))
+
+    expect(screen.getByText('tagged task')).toBeInTheDocument()
+    expect(screen.queryByText('plain task')).not.toBeInTheDocument()
   })
 
   it('shows an error state when the list fails to load', async () => {

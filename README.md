@@ -125,13 +125,14 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **Shell-Grundaufbau:** globale Nav und Modul-Kontext getrennt — eine **voll ein-/ausklappbare Nav-Sidebar** zeigt nur die Module; standardmäßig komplett eingeklappt (voller Platz für Inhalt), Aufklappen per Klick auf den Panel-Toggle in der Kopfleiste (persistiert, `Escape` schließt). Aufgeklappt ist sie eine **schwebende Card auf höherer Ebene** (12px Abstand zu den Fensterkanten, gerundet, Schatten), die den Inhalt **verschiebt** statt zu verdecken — wie in der Claude-Desktop-App. Projekte/Tags sind aus der globalen Leiste in die to-dos-Kontext-Rail gewandert. **Zentrierte Topbar-Suche** mit `⌘K`/`Ctrl K`-Shortcut. Komponententests fürs Auf-/Zuklappen + Shortcut
 - **Tailwind + shadcn/ui-Fundament:** Tailwind CSS (v3) + shadcn/ui (Radix) + lucide-react ins Frontend adoptiert — **ohne UI/UX-Bruch**: Tailwind-Utilities zeigen auf die bestehenden `--color-*`/`--radius-*`-Tokens (eine Quelle, Preset×Mode bleibt), Preflight aus (kein Reset der Altkomponenten), `@`-Alias + `cn`-Util + `components.json` eingerichtet. Proof-of-Concept: Shell-Icons auf lucide umgestellt (Stroke/Größe gematcht) und die Topbar-Buttons auf die shadcn-`Button`-Komponente
 - **Dashboard-Startseite (erste Ausbaustufe):** statt Platzhalter ein ruhiges „heute"-Zuhause — zeitbasierter Gruß, dieselben Live-Indikatoren wie das to-dos-Band, und ein Panel-Raster, das die Modul-Bausteine wiederverwendet: `today & overdue` (Fokusliste mit Sprung in die to-dos), `week ahead`, `by project` (Klick öffnet die gefilterte Liste) plus dezente „coming soon"-Kacheln für Kalender/Bewerbungen. Konfigurierbare Widgets ersetzen das später
+- **Tags pro Aufgabe:** Tags an Aufgaben setzen/entfernen über ein Multi-Select-Chip-Feld (inkl. „neuen Tag anlegen") direkt in der Liste; die Todo-Liste bettet die Tags backend-seitig in *einer* Antwort ein (Aggregat-Query statt N+1), Anzeige als Chip an der Zeile, plus **Tag-Filter** im Panel. Voll getestet (Go-Integrationstest fürs Embedding, MSW-Komponententests fürs Zuweisen + Filtern). Lucide-Icon-Migration abgeschlossen
 
 ### WIP / ToDo
-- **Tags pro Aufgabe** — Multi-Select/Chip-Input als Fast-Follow zu den übrigen Parametern. Als Nächstes.
+- **Tags im Create-Tile** — Tags schon beim Anlegen setzen (aktuell erst an bestehenden Zeilen). Als Nächstes.
+- **Param-Popovers auf shadcn** — die 5 Param-Menüs (project/due/priority/effort/tags) vom eigenen Popover auf Radix/shadcn portieren (interner Refactor, kein UX-Wechsel), mit jsdom-Polyfills für die Tests. Geplant.
 - **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines. Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
 - **Listen-Gruppierung ausbauen** — die Zeitraum-Gruppierung (Datums-Buckets) steht; offen bleiben Gruppierung **pro Projekt** und frei wählbare/anpassbare Gruppierungs-Achsen. Geplant.
-- **Filter ausbauen** — Tag-Filter im Panel, sobald Tags pro Aufgabe setzbar sind. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
 - **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.
 - **Wiederholungen** (recurring ToDos) als eigene Slice danach
