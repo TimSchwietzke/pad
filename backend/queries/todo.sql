@@ -91,3 +91,10 @@ SELECT t.* FROM todo_tags t
 JOIN todo_tag_map m ON m.tag_id = t.id
 WHERE m.todo_id = $1
 ORDER BY t.name;
+
+-- name: ListTagsForUserTodos :many
+-- Every (todo, tag) link for the user, so the todo list can embed tags in one round-trip.
+SELECT m.todo_id, t.id, t.name FROM todo_tags t
+JOIN todo_tag_map m ON m.tag_id = t.id
+WHERE t.user_id = $1
+ORDER BY m.todo_id, t.name;

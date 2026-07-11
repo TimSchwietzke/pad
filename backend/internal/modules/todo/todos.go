@@ -36,6 +36,9 @@ type todoResponse struct {
 	Position  int64     `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Tags attached to this todo. Always a slice (never null); populated by the
+	// list handler, empty on single-todo responses.
+	Tags []tagResponse `json:"tags"`
 }
 
 func toTodoResponse(t db.Todo) todoResponse {
@@ -51,6 +54,7 @@ func toTodoResponse(t db.Todo) todoResponse {
 		Position:        t.Position,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
+		Tags:            []tagResponse{},
 	}
 }
 
@@ -137,6 +141,24 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
 		return
 	}
+
+	// Embed each todo's tags. One extra round-trip for the whole list keeps the
+	// client from firing an N+1 storm of per-todo tag requests.
+	tagRows, err := m.q.ListTagsForUserTodos(r.Context(), userID(r))
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read tags")
+		return
+	}
+	byTodo := make(map[int64][]tagResponse, len(tagRows))
+	for _, tr := range tagRows {
+		byTodo[tr.TodoID] = append(byTodo[tr.TodoID], tagResponse{ID: tr.ID, Name: tr.Name})
+	}
+	for i := range out {
+		if tags := byTodo[out[i].ID]; tags != nil {
+			out[i].Tags = tags
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, out)
 }
 

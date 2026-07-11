@@ -29,6 +29,8 @@ export interface Todo {
   estimate_minutes: number | null
   /** Rank in the user's manual "custom" order (see the reorder endpoint). */
   position: number
+  /** Tags attached to this todo, embedded by the list endpoint (always present). */
+  tags: Tag[]
   created_at: string
   updated_at: string
 }

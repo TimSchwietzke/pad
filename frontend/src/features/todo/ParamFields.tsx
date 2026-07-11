@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
+import {
+  Calendar as CalIcon,
+  Check as CheckIcon,
+  Clock as ClockIcon,
+  Flag as FlagIcon,
+  Folder as FolderIcon,
+  Tag as TagIcon,
+} from 'lucide-react'
 import { Popover } from '../../core/Popover'
-import type { Priority, Project } from './types'
+import type { Priority, Project, Tag } from './types'
 import { formatDue, formatEstimate, priorityLabel } from './format'
 
-// --- icons (stroke, inherit color) ----------------------------------------
-const sv = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-const Folder = () => <svg width="14" height="14" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-const Flag = () => <svg width="14" height="14" viewBox="0 0 24 24" {...sv} aria-hidden><path d="M5 21V4M5 4h11l-2 4 2 4H5" /></svg>
-const Clock = () => <svg width="14" height="14" viewBox="0 0 24 24" {...sv} aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-const Cal = () => <svg width="14" height="14" viewBox="0 0 24 24" {...sv} aria-hidden><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M7 3v4M17 3v4M4 10h16" /></svg>
+// field icons — lucide, sized down for the small chips
+const Folder = () => <FolderIcon size={14} />
+const Flag = () => <FlagIcon size={14} />
+const Clock = () => <ClockIcon size={14} />
+const Cal = () => <CalIcon size={14} />
 
 /** Manages a field's open state and the trigger ref shared with its Popover. */
 function useField() {
@@ -298,6 +305,70 @@ export function DueField({ value, onChange }: { value: string | null; onChange: 
                 pick(new Date(y, m - 1, d).toISOString())
               }}
             />
+          </div>
+        </Menu>
+      </Popover>
+    </>
+  )
+}
+
+/**
+ * tags picker — multi-select over the user's tags, with an inline "create tag". Unlike the
+ * single-value fields it stays open while toggling, so several tags can be set in one go.
+ */
+export function TagsField({
+  value,
+  allTags,
+  onToggle,
+  onCreate,
+}: {
+  value: Tag[]
+  allTags: Tag[]
+  onToggle: (tagId: number, currentlyOn: boolean) => void
+  onCreate: (name: string) => void
+}) {
+  const f = useField()
+  const [draft, setDraft] = useState('')
+  const has = (id: number) => value.some((t) => t.id === id)
+  const create = () => {
+    const name = draft.trim()
+    if (!name) return
+    onCreate(name)
+    setDraft('')
+  }
+  return (
+    <>
+      <Chip
+        icon={<TagIcon size={14} />}
+        label={value.length ? value.map((t) => t.name).join(', ') : null}
+        placeholder="tags"
+        set={value.length > 0}
+        triggerRef={f.ref}
+        expanded={f.open}
+        onClick={() => f.setOpen((o) => !o)}
+      />
+      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
+        <Menu>
+          {allTags.map((t) => (
+            <MenuItem key={t.id} active={has(t.id)} onClick={() => onToggle(t.id, has(t.id))}>
+              <span className="menu-check">{has(t.id) && <CheckIcon size={14} />}</span>#{t.name}
+            </MenuItem>
+          ))}
+          {allTags.length === 0 && <p className="menu-empty">no tags yet</p>}
+          <div className="menu-input">
+            <input
+              value={draft}
+              placeholder="new tag…"
+              aria-label="new tag"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  create()
+                }
+              }}
+            />
+            <button type="button" className="menu-input__apply" onClick={create}>add</button>
           </div>
         </Menu>
       </Popover>

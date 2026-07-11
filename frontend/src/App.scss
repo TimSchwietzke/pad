@@ -993,6 +993,13 @@ button.rail-proj__row:hover {
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
+/* fixed-width slot for the tag toggle's check, so labels stay aligned */
+.menu-check {
+  display: inline-flex;
+  width: 14px;
+  flex: none;
+  color: var(--color-primary);
+}
 .menu-input {
   display: flex;
   gap: 6px;

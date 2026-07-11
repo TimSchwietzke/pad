@@ -102,3 +102,32 @@ export function useCreateProject() {
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.projects }),
   })
 }
+
+/** Creates a tag and refreshes the tag list. */
+export function useCreateTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => todoApi.createTag(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.tags }),
+  })
+}
+
+/**
+ * Attaches or detaches a tag on a todo, then refreshes the todo lists — which embed
+ * each todo's tags — so the row and any tag filter update.
+ */
+export function useAddTodoTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ todoId, tagId }: { todoId: number; tagId: number }) => todoApi.addTagToTodo(todoId, tagId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.todos }),
+  })
+}
+
+export function useRemoveTodoTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ todoId, tagId }: { todoId: number; tagId: number }) => todoApi.removeTagFromTodo(todoId, tagId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.todos }),
+  })
+}
