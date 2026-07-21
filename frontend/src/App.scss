@@ -560,47 +560,6 @@ button.rail-proj__row:hover {
   color: var(--color-text-primary);
   border-color: var(--color-text-placeholder);
 }
-/* filters deviate from the default -> the entry button shows it */
-.ghost-btn.is-active {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-  background: var(--color-primary-bg);
-}
-
-/* collapsible filter panel — a horizontal row of pills that slides open.
-   The 0fr/1fr grid trick animates height without measuring it. */
-.filter-panel {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--motion) var(--ease-out);
-}
-.filter-panel.is-open {
-  grid-template-rows: 1fr;
-}
-.filter-panel__inner {
-  overflow: hidden;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 2px;
-}
-.filter-panel.is-open .filter-panel__inner {
-  padding-bottom: 12px;
-}
-.filter-panel__divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 6px;
-  background: var(--color-border);
-}
-@media (prefers-reduced-motion: reduce) {
-  .filter-panel {
-    transition: none;
-  }
-}
-
 .controlbar {
   display: flex;
   align-items: center;
@@ -615,34 +574,55 @@ button.rail-proj__row:hover {
   align-items: center;
   gap: 8px;
 }
+/* left half of the control row: the filter menu plus one token per active filter */
+.controlbar__filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* right half: sort + density, kept together so wrapping stays tidy */
+.controlbar__side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* an active filter as a removable token — accent-tinted (it IS the current selection) */
+.filter-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+}
+.filter-token__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.filter-token__x:hover,
+.filter-token__x:focus-visible {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  outline: none;
+}
 .controlbar__label {
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   margin-right: 4px;
 }
-.sort-pill {
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-surface);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-pill);
-  padding: 4px 12px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
-    border-color var(--motion) var(--ease-out);
-}
-.sort-pill:hover:not(.is-active) {
-  background: var(--color-bg-surface-2);
-  color: var(--color-text-primary);
-  border-color: var(--color-text-placeholder);
-}
-.sort-pill.is-active {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  border-color: var(--color-primary);
-}
-
-/* the sort dropdown's trigger — pill-shaped like its pill-row predecessor */
+/* the pill-shaped trigger shared by the filter and sort dropdowns */
 .sort-trigger {
   display: inline-flex;
   align-items: center;
