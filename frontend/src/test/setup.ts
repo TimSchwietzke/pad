@@ -19,6 +19,24 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
+// Radix primitives (Popover, DropdownMenu) call a few DOM APIs jsdom doesn't
+// implement. Stub them so the floating menus open/close under userEvent.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+if (!('ResizeObserver' in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 // An unhandled request usually means a missing mock — fail loudly rather than
 // letting the real network (or a hang) into the test.
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))

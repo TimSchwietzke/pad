@@ -34,8 +34,12 @@ import {
   Rows2,
   AlignJustify,
   GripVertical,
+  ArrowUpDown,
+  ChevronDown,
+  Check as CheckIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
 type View = 'dashboard' | 'todos' | 'settings'
@@ -46,11 +50,19 @@ type Mode = 'light' | 'dark'
 // Which field the list is sorted by, mapped to the backend's ?sort= spec.
 // "custom" is the manual drag order (todos.position).
 type SortKey = 'priority' | 'effort' | 'deadline' | 'custom'
+const sortKeys: SortKey[] = ['priority', 'effort', 'deadline', 'custom']
 const sortSpec: Record<SortKey, string> = {
   priority: '-priority', // highest first
   effort: 'estimate', // smallest effort first
   deadline: 'due', // soonest deadline first
   custom: 'position', // the user's manual order
+}
+// Short direction hints shown next to each option in the sort menu.
+const sortHint: Record<SortKey, string> = {
+  priority: 'highest first',
+  effort: 'smallest first',
+  deadline: 'soonest first',
+  custom: 'your order',
 }
 
 // How densely the list is rendered. Comfortable is the roomy default;
@@ -544,13 +556,28 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                 </div>
 
                 <div className="controlbar">
+                  {/* sort moved from a pill row into one compact dropdown — scales to more
+                      criteria (combined sorts are planned) without widening the bar */}
                   <div className="controlbar__sort">
                     <span className="controlbar__label">sort by</span>
-                    {(['priority', 'effort', 'deadline', 'custom'] as SortKey[]).map((key) => (
-                      <button key={key} className={`sort-pill${sort === key ? ' is-active' : ''}`} onClick={() => setSort(key)}>
-                        {key}
-                      </button>
-                    ))}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="sort-trigger" aria-label="sort by">
+                          <ArrowUpDown size={14} aria-hidden />
+                          {sort}
+                          <ChevronDown size={14} className="sort-trigger__caret" aria-hidden />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="min-w-[11.5rem]">
+                        {sortKeys.map((key) => (
+                          <DropdownMenuItem key={key} onSelect={() => setSort(key)}>
+                            <span className="menu-check">{sort === key && <CheckIcon size={14} />}</span>
+                            <span className="flex-1">{key}</span>
+                            <span className="text-xs text-muted-foreground">{sortHint[key]}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   <div className="seg" role="group" aria-label="view density">
                     <button

@@ -642,6 +642,33 @@ button.rail-proj__row:hover {
   border-color: var(--color-primary);
 }
 
+/* the sort dropdown's trigger — pill-shaped like its pill-row predecessor */
+.sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+}
+.sort-trigger:hover,
+.sort-trigger[data-state='open'] {
+  background: var(--color-bg-surface-2);
+  border-color: var(--color-text-placeholder);
+}
+.sort-trigger__caret {
+  color: var(--color-text-secondary);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.sort-trigger[data-state='open'] .sort-trigger__caret {
+  transform: rotate(180deg);
+}
+
 /* segmented control for list density */
 .seg {
   display: inline-flex;
@@ -939,8 +966,9 @@ button.rail-proj__row:hover {
   flex: none;
 }
 
+/* field menus float via Radix (portal + popper does the placement); this class
+   keeps the token look and doubles as the create bar's "inside a menu" marker */
 .popover {
-  position: fixed;
   z-index: var(--z-popover);
   min-width: 168px;
   max-width: 264px;
