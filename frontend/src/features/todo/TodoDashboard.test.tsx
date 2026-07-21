@@ -399,6 +399,44 @@ describe('TodoDashboard', () => {
     expect(await within(row).findByText('urgent')).toBeInTheDocument()
   })
 
+  it('creates a task with a tag picked in the create tile', async () => {
+    resetDb({ tags: [{ id: 5, name: 'urgent' }] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: /create a task/i }))
+    await user.click(screen.getByRole('button', { name: 'set tags' }))
+    await user.click(await screen.findByRole('menuitem', { name: '#urgent' }))
+    await user.keyboard('{Escape}') // the tags menu stays open for multi-select; close it
+
+    await user.type(screen.getByLabelText('new task title'), 'tagged milk{Enter}')
+
+    // the new row carries the tag once the attach + refetch settle
+    const row = (await screen.findByText('tagged milk')).closest('.todo') as HTMLElement
+    expect(await within(row).findByText('urgent')).toBeInTheDocument()
+    // and the draft was cleared for the next rapid entry
+    const bar = document.querySelector('.create-bar') as HTMLElement
+    expect(within(bar).getByRole('button', { name: 'set tags' })).toBeInTheDocument()
+  })
+
+  it('creates a brand-new tag inline in the create tile and attaches it', async () => {
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: /create a task/i }))
+    await user.click(screen.getByRole('button', { name: 'set tags' }))
+    await user.type(await screen.findByLabelText('new tag'), 'fresh')
+    await user.click(screen.getByRole('button', { name: 'add' }))
+
+    // the created tag lands in the draft selection (chip shows it)
+    expect(await screen.findByRole('button', { name: 'tags: fresh' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await user.type(screen.getByLabelText('new task title'), 'greenfield{Enter}')
+
+    const row = (await screen.findByText('greenfield')).closest('.todo') as HTMLElement
+    expect(await within(row).findByText('fresh')).toBeInTheDocument()
+  })
+
   it('filters the list by tag', async () => {
     resetDb({
       tags: [{ id: 5, name: 'urgent' }],
