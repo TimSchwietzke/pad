@@ -115,7 +115,7 @@ describe('TodoDashboard', () => {
     expect(container.querySelector('.todo-list--compact')).toBeTruthy()
   })
 
-  it('requests the chosen sort order from the backend via the sort menu', async () => {
+  it('combines a primary and a "then by" sort into one backend spec', async () => {
     resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
     const user = userEvent.setup()
     await openTodos(user)
@@ -124,16 +124,21 @@ describe('TodoDashboard', () => {
     // Default sort is priority, highest first.
     await waitFor(() => expect(requestedSorts()).toContain('-priority'))
 
-    // The pills became one dropdown: open it, pick deadline.
     const trigger = screen.getByRole('button', { name: 'sort by' })
     expect(trigger).toHaveTextContent('priority')
     await user.click(trigger)
-    await user.click(await screen.findByRole('menuitem', { name: /deadline/ }))
 
+    // primary: deadline
+    await user.click(await screen.findByRole('menuitem', { name: 'sort by deadline' }))
     await waitFor(() => expect(requestedSorts()).toContain('due'))
-    // the trigger reflects the new choice, and the menu has closed again
-    expect(screen.getByRole('button', { name: 'sort by' })).toHaveTextContent('deadline')
-    expect(screen.queryByRole('menuitem', { name: /deadline/ })).not.toBeInTheDocument()
+
+    // secondary: priority — the menu stayed open, so both go in one visit
+    await user.click(screen.getByRole('menuitem', { name: 'then by priority' }))
+    await waitFor(() => expect(requestedSorts()).toContain('due,-priority'))
+
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'sort by' })).toHaveTextContent('deadline · priority')
+    expect(screen.queryByRole('menuitem', { name: 'then by none' })).not.toBeInTheDocument()
   })
 
   it('drag reorders from the current view and saves it as the custom order', async () => {

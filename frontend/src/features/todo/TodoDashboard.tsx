@@ -58,7 +58,11 @@ type Mode = 'light' | 'dark'
 // Which field the list is sorted by, mapped to the backend's ?sort= spec.
 // "custom" is the manual drag order (todos.position).
 type SortKey = 'priority' | 'effort' | 'deadline' | 'custom'
+// Keys that can act as the secondary ("then by") criterion — everything except
+// custom, whose manual order is already total and can't be refined.
+type ThenKey = Exclude<SortKey, 'custom'>
 const sortKeys: SortKey[] = ['priority', 'effort', 'deadline', 'custom']
+const thenKeys: ThenKey[] = ['priority', 'effort', 'deadline']
 const sortSpec: Record<SortKey, string> = {
   priority: '-priority', // highest first
   effort: 'estimate', // smallest effort first
@@ -71,6 +75,16 @@ const sortHint: Record<SortKey, string> = {
   effort: 'smallest first',
   deadline: 'soonest first',
   custom: 'your order',
+}
+
+/**
+ * Builds the backend sort spec from the primary key and the optional secondary.
+ * The secondary breaks ties in the primary (backend: `?sort=a,b`); custom is a
+ * total manual order, so a secondary would never kick in and is ignored.
+ */
+function buildSortSpec(sort: SortKey, thenBy: ThenKey | null): string {
+  if (sort === 'custom' || thenBy == null || thenBy === sort) return sortSpec[sort]
+  return `${sortSpec[sort]},${sortSpec[thenBy]}`
 }
 
 // How densely the list is rendered. Comfortable is the roomy default;
@@ -125,6 +139,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>('pad.sidebar.open', false)
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
+  // Optional secondary criterion: breaks ties in the primary sort (e.g. same
+  // priority -> soonest deadline first). null = primary only.
+  const [thenBy, setThenBy] = useState<ThenKey | null>(null)
 
   // List filters — persisted like the other device preferences. They surface as
   // removable tokens next to the filter menu, so there's no panel state to keep.
@@ -156,7 +173,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
 
   const projects = useProjects()
   const tags = useTags()
-  const todos = useTodos(sortSpec[sort])
+  const todos = useTodos(buildSortSpec(sort, thenBy))
   const create = useCreateTodo()
   const update = useUpdateTodo()
   const reorder = useReorderTodos()
@@ -616,18 +633,63 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                         <DropdownMenuTrigger asChild>
                           <button type="button" className="sort-trigger" aria-label="sort by">
                             <ArrowUpDown size={14} aria-hidden />
-                            {sort}
+                            {sort !== 'custom' && thenBy != null && thenBy !== sort ? `${sort} · ${thenBy}` : sort}
                             <ChevronDown size={14} className="sort-trigger__caret" aria-hidden />
                           </button>
                         </DropdownMenuTrigger>
+                        {/* like the filter menu, selecting keeps this open so primary and
+                            secondary can be set in one visit */}
                         <DropdownMenuContent className="min-w-[11.5rem]">
+                          <DropdownMenuLabel>sort by</DropdownMenuLabel>
                           {sortKeys.map((key) => (
-                            <DropdownMenuItem key={key} onSelect={() => setSort(key)}>
+                            <DropdownMenuItem
+                              key={key}
+                              aria-label={`sort by ${key}`}
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                setSort(key)
+                                // the same key can't refine itself as the tiebreaker
+                                if (thenBy === key) setThenBy(null)
+                              }}
+                            >
                               <span className="menu-check">{sort === key && <CheckIcon size={14} />}</span>
                               <span className="flex-1">{key}</span>
                               <span className="text-xs text-muted-foreground">{sortHint[key]}</span>
                             </DropdownMenuItem>
                           ))}
+                          {/* the tiebreaker only makes sense for real sorts; the manual
+                              custom order is already total */}
+                          {sort !== 'custom' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>then by</DropdownMenuLabel>
+                              <DropdownMenuItem
+                                aria-label="then by none"
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  setThenBy(null)
+                                }}
+                              >
+                                <span className="menu-check">{thenBy == null && <CheckIcon size={14} />}</span>
+                                none
+                              </DropdownMenuItem>
+                              {thenKeys
+                                .filter((key) => key !== sort)
+                                .map((key) => (
+                                  <DropdownMenuItem
+                                    key={key}
+                                    aria-label={`then by ${key}`}
+                                    onSelect={(e) => {
+                                      e.preventDefault()
+                                      setThenBy(key)
+                                    }}
+                                  >
+                                    <span className="menu-check">{thenBy === key && <CheckIcon size={14} />}</span>
+                                    {key}
+                                  </DropdownMenuItem>
+                                ))}
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

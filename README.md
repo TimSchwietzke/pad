@@ -130,8 +130,9 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 - **Filter-Redesign (Toolbar statt Panel):** das ausklappbare Filter-Panel mit Pill-Reihen ist ersetzt durch das Muster moderner Tools (Linear/GitHub): **ein `filter`-Dropdown** in der Control-Zeile (Sektionen show/projekt/tag, Häkchen am aktiven Eintrag; Auswahl schließt das Menü nicht, mehrere Filter gehen in einem Besuch) und **aktive Filter als entfernbare Tokens** daneben (`done ×`, `● projekt ×`, `#tag ×`). Ruhezustand = eine leere Zeile, nichts schiebt die Liste herunter; Filter + Sortierung leben jetzt in einer Leiste. Tests umgestellt (Menü-Flow + Token-Entfernen)
 - **Tags im Create-Tile:** Tags lassen sich jetzt schon beim Anlegen setzen — fünfter Chip im Create-Tile mit demselben Multi-Select-Menü wie an bestehenden Zeilen (inkl. „neuen Tag anlegen"); die Auswahl lebt client-seitig im Entwurf und wird nach dem Anlegen über den bestehenden Attach-Endpoint an die neue Aufgabe gehängt (reine Wiederverwendung: `TagsField` + vorhandene Hooks, kein Backend-Umbau). Komponententests für beide Wege (Tag wählen / inline anlegen)
 
+- **Sortierung kombinieren (sort by + then by):** das Sort-Menü hat jetzt zwei Sektionen — Primärkriterium plus optionales „then by" als Tiebreaker (z. B. Deadline, bei Gleichstand höchste Priorität zuerst; Backend-`?sort=a,b`). Auswahl hält das Menü offen (beide Kriterien in einem Besuch), Trigger zeigt `deadline · priority`; „custom" ist als manuelle Total-Ordnung vom Tiebreaker ausgenommen
+
 ### WIP / ToDo
-- **Sortierung frei kombinieren** — mehrere Sortierkriterien gleichzeitig statt eines (Backend kann `?sort=a,b` schon; das neue Sort-Dropdown ist der Ansatzpunkt). Geplant.
 - **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
 - **Listen-Gruppierung ausbauen** — die Zeitraum-Gruppierung (Datums-Buckets) steht; offen bleiben Gruppierung **pro Projekt** und frei wählbare/anpassbare Gruppierungs-Achsen. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
