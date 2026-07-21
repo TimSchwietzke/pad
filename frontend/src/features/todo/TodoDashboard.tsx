@@ -37,9 +37,17 @@ import {
   ArrowUpDown,
   ChevronDown,
   Check as CheckIcon,
+  X as XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // Which top-level view is shown. dashboard is the (placeholder) start page.
 type View = 'dashboard' | 'todos' | 'settings'
@@ -118,12 +126,11 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
 
-  // List filters — persisted like the other device preferences. The panel's
-  // open/closed state is deliberately ephemeral.
+  // List filters — persisted like the other device preferences. They surface as
+  // removable tokens next to the filter menu, so there's no panel state to keep.
   const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>('pad.filter.status', 'open')
   const [projectFilter, setProjectFilter] = usePersistentState<number | null>('pad.filter.project', null)
   const [tagFilter, setTagFilter] = usePersistentState<number | null>('pad.filter.tag', null)
-  const [filterOpen, setFilterOpen] = useState(false)
 
   useEffect(() => {
     const root = document.documentElement
@@ -317,7 +324,6 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
       : statusFilter === 'done'
         ? scoped.filter((t) => t.status === 'done')
         : [...scoped.filter((t) => t.status === 'open'), ...scoped.filter((t) => t.status === 'done')]
-  const filterActive = statusFilter !== 'open' || activeProject != null || activeTag != null
 
   // Live triage indicators for the focus band, computed over the (project-scoped) list.
   const stats = triageStats(scoped)
@@ -468,14 +474,6 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                     </div>
                     {/* share lands in its own slice (markdown export); shown as the entry point */}
                     <div className="page-head__actions">
-                      <button
-                        className={`ghost-btn${filterActive ? ' is-active' : ''}`}
-                        type="button"
-                        aria-expanded={filterOpen}
-                        onClick={() => setFilterOpen((o) => !o)}
-                      >
-                        <Filter /> filter
-                      </button>
                       <button className="ghost-btn" type="button"><Share /> share</button>
                     </div>
                   </div>
@@ -504,85 +502,136 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                   )}
                 </header>
 
-                {/* collapsible filter panel — slides open below the header */}
-                <div className={`filter-panel${filterOpen ? ' is-open' : ''}`}>
-                  <div className="filter-panel__inner" inert={!filterOpen}>
-                    <span className="controlbar__label">show</span>
-                    {(['open', 'done', 'both'] as StatusFilter[]).map((key) => (
-                      <button
-                        key={key}
-                        className={`sort-pill${statusFilter === key ? ' is-active' : ''}`}
-                        onClick={() => setStatusFilter(key)}
-                      >
-                        {key}
-                      </button>
-                    ))}
-                    <span className="filter-panel__divider" aria-hidden />
-                    <span className="controlbar__label">project</span>
-                    <button
-                      className={`sort-pill${activeProject == null ? ' is-active' : ''}`}
-                      onClick={() => setProjectFilter(null)}
-                    >
-                      all
-                    </button>
-                    {(projects.data ?? []).map((p) => (
-                      <button
-                        key={p.id}
-                        className={`sort-pill${activeProject === p.id ? ' is-active' : ''}`}
-                        onClick={() => setProjectFilter(p.id)}
-                      >
-                        <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} /> {p.name}
-                      </button>
-                    ))}
-                    {(tags.data ?? []).length > 0 && (
-                      <>
-                        <span className="filter-panel__divider" aria-hidden />
-                        <span className="controlbar__label">tag</span>
-                        <button
-                          className={`sort-pill${activeTag == null ? ' is-active' : ''}`}
-                          onClick={() => setTagFilter(null)}
-                        >
-                          all
-                        </button>
-                        {(tags.data ?? []).map((t) => (
-                          <button
-                            key={t.id}
-                            className={`sort-pill${activeTag === t.id ? ' is-active' : ''}`}
-                            onClick={() => setTagFilter(t.id)}
-                          >
-                            #{t.name}
-                          </button>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-
                 <div className="controlbar">
-                  {/* sort moved from a pill row into one compact dropdown — scales to more
-                      criteria (combined sorts are planned) without widening the bar */}
-                  <div className="controlbar__sort">
-                    <span className="controlbar__label">sort by</span>
+                  {/* the list's one control row: filter (menu + removable tokens for what's
+                      active) on the left, sort + density on the right — no push-down panel,
+                      the resting state is a single quiet line (Linear-style toolbar) */}
+                  <div className="controlbar__filters">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" className="sort-trigger" aria-label="sort by">
-                          <ArrowUpDown size={14} aria-hidden />
-                          {sort}
+                        <button type="button" className="sort-trigger" aria-label="filter">
+                          <Filter size={14} aria-hidden />
+                          filter
                           <ChevronDown size={14} className="sort-trigger__caret" aria-hidden />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="min-w-[11.5rem]">
-                        {sortKeys.map((key) => (
-                          <DropdownMenuItem key={key} onSelect={() => setSort(key)}>
-                            <span className="menu-check">{sort === key && <CheckIcon size={14} />}</span>
-                            <span className="flex-1">{key}</span>
-                            <span className="text-xs text-muted-foreground">{sortHint[key]}</span>
+                      {/* selecting keeps the menu open (preventDefault) so several filters
+                          can be combined in one visit; Escape or outside click closes */}
+                      <DropdownMenuContent className="min-w-[12rem]">
+                        <DropdownMenuLabel>show</DropdownMenuLabel>
+                        {(['open', 'done', 'both'] as StatusFilter[]).map((key) => (
+                          <DropdownMenuItem
+                            key={key}
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              setStatusFilter(key)
+                            }}
+                          >
+                            <span className="menu-check">{statusFilter === key && <CheckIcon size={14} />}</span>
+                            {key === 'both' ? 'open + done' : key}
                           </DropdownMenuItem>
                         ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>project</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault()
+                            setProjectFilter(null)
+                          }}
+                        >
+                          <span className="menu-check">{activeProject == null && <CheckIcon size={14} />}</span>
+                          all projects
+                        </DropdownMenuItem>
+                        {(projects.data ?? []).map((p) => (
+                          <DropdownMenuItem
+                            key={p.id}
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              setProjectFilter(activeProject === p.id ? null : p.id)
+                            }}
+                          >
+                            <span className="menu-check">{activeProject === p.id && <CheckIcon size={14} />}</span>
+                            <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} />
+                            {p.name}
+                          </DropdownMenuItem>
+                        ))}
+                        {(tags.data ?? []).length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel>tag</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                setTagFilter(null)
+                              }}
+                            >
+                              <span className="menu-check">{activeTag == null && <CheckIcon size={14} />}</span>
+                              all tags
+                            </DropdownMenuItem>
+                            {(tags.data ?? []).map((t) => (
+                              <DropdownMenuItem
+                                key={t.id}
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  setTagFilter(activeTag === t.id ? null : t.id)
+                                }}
+                              >
+                                <span className="menu-check">{activeTag === t.id && <CheckIcon size={14} />}</span>#{t.name}
+                              </DropdownMenuItem>
+                            ))}
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
+
+                    {statusFilter !== 'open' && (
+                      <FilterToken label="status" onClear={() => setStatusFilter('open')}>
+                        {statusFilter === 'done' ? 'done' : 'open + done'}
+                      </FilterToken>
+                    )}
+                    {activeProject != null && (
+                      <FilterToken label="project" onClear={() => setProjectFilter(null)}>
+                        <span
+                          className="dot"
+                          style={{
+                            background:
+                              (projects.data ?? []).find((p) => p.id === activeProject)?.color ||
+                              'var(--color-text-secondary)',
+                          }}
+                        />
+                        {(projects.data ?? []).find((p) => p.id === activeProject)?.name}
+                      </FilterToken>
+                    )}
+                    {activeTag != null && (
+                      <FilterToken label="tag" onClear={() => setTagFilter(null)}>
+                        #{(tags.data ?? []).find((t) => t.id === activeTag)?.name}
+                      </FilterToken>
+                    )}
                   </div>
-                  <div className="seg" role="group" aria-label="view density">
+
+                  <div className="controlbar__side">
+                    <div className="controlbar__sort">
+                      <span className="controlbar__label">sort by</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="sort-trigger" aria-label="sort by">
+                            <ArrowUpDown size={14} aria-hidden />
+                            {sort}
+                            <ChevronDown size={14} className="sort-trigger__caret" aria-hidden />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="min-w-[11.5rem]">
+                          {sortKeys.map((key) => (
+                            <DropdownMenuItem key={key} onSelect={() => setSort(key)}>
+                              <span className="menu-check">{sort === key && <CheckIcon size={14} />}</span>
+                              <span className="flex-1">{key}</span>
+                              <span className="text-xs text-muted-foreground">{sortHint[key]}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="seg" role="group" aria-label="view density">
                     <button
                       className={`seg__btn${density === 'comfortable' ? ' is-active' : ''}`}
                       aria-pressed={density === 'comfortable'}
@@ -591,14 +640,15 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                     >
                       <Rows />
                     </button>
-                    <button
-                      className={`seg__btn${density === 'compact' ? ' is-active' : ''}`}
-                      aria-pressed={density === 'compact'}
-                      title="compact"
-                      onClick={() => setDensity('compact')}
-                    >
-                      <Lines />
-                    </button>
+                      <button
+                        className={`seg__btn${density === 'compact' ? ' is-active' : ''}`}
+                        aria-pressed={density === 'compact'}
+                        title="compact"
+                        onClick={() => setDensity('compact')}
+                      >
+                        <Lines />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -705,6 +755,21 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
         </main>
       </div>
     </div>
+  )
+}
+
+/**
+ * One active list filter, shown as a removable token next to the filter menu —
+ * the resting control row stays empty; only real choices take up space.
+ */
+function FilterToken({ label, onClear, children }: { label: string; onClear: () => void; children: ReactNode }) {
+  return (
+    <span className="filter-token">
+      {children}
+      <button type="button" className="filter-token__x" aria-label={`remove filter: ${label}`} onClick={onClear}>
+        <XIcon size={12} />
+      </button>
+    </span>
   )
 }
 

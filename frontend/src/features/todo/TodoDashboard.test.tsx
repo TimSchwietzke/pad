@@ -242,7 +242,7 @@ describe('TodoDashboard', () => {
     expect(screen.getByRole('checkbox', { name: /mark done/i })).toBeInTheDocument()
   })
 
-  it('filters by status and puts done tasks last in "both"', async () => {
+  it('filters by status from the filter menu and puts done tasks last in "both"', async () => {
     resetDb({
       todos: [
         makeTodo({ id: 1, title: 'finished one', status: 'done' }),
@@ -258,21 +258,23 @@ describe('TodoDashboard', () => {
     await screen.findByText('open one')
     expect(screen.queryByText('finished one')).not.toBeInTheDocument()
 
-    // open the panel, switch to done only
+    // the filter menu replaces the old panel: pick "done"
     await user.click(screen.getByRole('button', { name: 'filter' }))
-    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
-    await user.click(panel.getByRole('button', { name: 'done' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'done' }))
+    await user.keyboard('{Escape}') // the menu stays open for combining; close it
     expect(await screen.findByText('finished one')).toBeInTheDocument()
     expect(screen.queryByText('open one')).not.toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('pad.filter.status')!)).toBe('done')
 
     // "both": open tasks first, done sink to the bottom (seed order was done first)
-    await user.click(panel.getByRole('button', { name: 'both' }))
+    await user.click(screen.getByRole('button', { name: 'filter' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'open + done' }))
+    await user.keyboard('{Escape}')
     const titles = [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
     expect(titles).toEqual(['open one', 'finished one'])
   })
 
-  it('filters by project', async () => {
+  it('filters by project and clears it via the filter token', async () => {
     resetDb({
       projects: [{ id: 1, name: 'work', color: '#f00', created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z' }],
       todos: [
@@ -281,17 +283,21 @@ describe('TodoDashboard', () => {
       ],
     })
     const user = userEvent.setup()
-    const { container } = renderWithClient(<TodoDashboard />)
+    renderWithClient(<TodoDashboard />)
     await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     await screen.findByText('loose task')
 
     await user.click(screen.getByRole('button', { name: 'filter' }))
-    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
-    await user.click(panel.getByRole('button', { name: 'work' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'work' }))
+    await user.keyboard('{Escape}')
 
     expect(screen.getByText('work task')).toBeInTheDocument()
     expect(screen.queryByText('loose task')).not.toBeInTheDocument()
+
+    // the active filter shows as a removable token; clearing it restores the list
+    await user.click(screen.getByRole('button', { name: 'remove filter: project' }))
+    expect(await screen.findByText('loose task')).toBeInTheDocument()
   })
 
   it('surfaces overdue and due-today indicators in the focus band', async () => {
@@ -437,7 +443,7 @@ describe('TodoDashboard', () => {
     expect(await within(row).findByText('fresh')).toBeInTheDocument()
   })
 
-  it('filters the list by tag', async () => {
+  it('filters the list by tag from the filter menu', async () => {
     resetDb({
       tags: [{ id: 5, name: 'urgent' }],
       todos: [
@@ -446,14 +452,14 @@ describe('TodoDashboard', () => {
       ],
     })
     const user = userEvent.setup()
-    const { container } = renderWithClient(<TodoDashboard />)
+    renderWithClient(<TodoDashboard />)
     await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
     await user.click(await screen.findByRole('button', { name: 'to-dos' }))
     await screen.findByText('plain task')
 
     await user.click(screen.getByRole('button', { name: 'filter' }))
-    const panel = within(container.querySelector('.filter-panel') as HTMLElement)
-    await user.click(panel.getByRole('button', { name: '#urgent' }))
+    await user.click(await screen.findByRole('menuitem', { name: '#urgent' }))
+    await user.keyboard('{Escape}')
 
     expect(screen.getByText('tagged task')).toBeInTheDocument()
     expect(screen.queryByText('plain task')).not.toBeInTheDocument()
