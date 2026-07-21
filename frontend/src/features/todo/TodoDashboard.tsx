@@ -5,6 +5,7 @@ import {
   useAddTodoTag,
   useCreateTag,
   useCreateTodo,
+  useDeleteTodo,
   useProjects,
   useRemoveTodoTag,
   useReorderTodos,
@@ -40,6 +41,8 @@ import {
   ChevronDown,
   Check as CheckIcon,
   X as XIcon,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -158,16 +161,10 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     root.dataset.mode = mode
   }, [preset, mode])
 
-  // ⌘K / Ctrl+K focuses the search — a familiar "jump to" entry point (a full
-  // command palette lands later; for now it's a quick way to reach the search field).
-  const searchRef = useRef<HTMLInputElement>(null)
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  // Escape closes the nav sidebar. (Search — and its ⌘K jump-to — is not wired
+  // yet; the field shows a "coming soon" state rather than pretending to work.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        searchRef.current?.focus()
-      }
       if (e.key === 'Escape') setSidebarOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -179,6 +176,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const todos = useTodos(buildSortSpec(sort, thenBy))
   const create = useCreateTodo()
   const update = useUpdateTodo()
+  const remove = useDeleteTodo()
   const reorder = useReorderTodos()
   const createTag = useCreateTag()
   const addTag = useAddTodoTag()
@@ -402,18 +400,20 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
             <PanelIcon />
           </Button>
         </div>
-        <label className="search">
+        {/* search isn't wired yet — shown as a clearly inactive "coming soon" field
+            instead of a box that focuses but can't search (honest > pretend) */}
+        <label className="search is-soon" title="search is coming soon">
           <Search />
-          <input ref={searchRef} placeholder="search or jump to…" aria-label="search" />
-          <span className="search__kbd" aria-hidden>{isMac ? '⌘K' : 'Ctrl K'}</span>
+          <input placeholder="search — coming soon" aria-label="search" disabled />
+          <span className="search__soon" aria-hidden>soon</span>
         </label>
         <div className="topbar__actions">
           {/* preset lives in settings now; light/dark stays a quick top-bar toggle */}
           <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
             {mode === 'light' ? <Moon /> : <Sun />}
           </Button>
-          {/* notifications — surface lands with a later module */}
-          <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" aria-label="notifications"><Bell /></Button>
+          {/* notifications — disabled until the notifications surface lands */}
+          <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" aria-label="notifications (coming soon)" title="coming soon" disabled><Bell /></Button>
           <span className="topbar__divider" aria-hidden />
           <button className="avatar-btn" aria-label="account"><Avatar size={30} /></button>
         </div>
@@ -736,7 +736,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                   onCreateTag={(name, onDone) => createTag.mutate(name, { onSuccess: onDone })}
                 />
 
-                {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
+                {todos.isError && <p className="state state--error">couldn’t load your tasks — please try again.</p>}
 
                 {!todos.isPending && !todos.isError && visible.length === 0 && (
                   <p className="state">nothing here — adjust the filters or create a task.</p>
@@ -806,6 +806,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                             />
                           </div>
                         </div>
+                        <RowMenu onDelete={() => remove.mutate(todo.id)} />
                         {/* in custom sort the handle is the drag affordance; otherwise a hint */}
                         <span className="todo__handle" aria-hidden><Grip /></span>
                       </li>
@@ -917,6 +918,49 @@ function ShareMenu({ sections, projects }: { sections: ExportSection[]; projects
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * Per-row actions (kebab → delete). Delete is destructive with no soft-delete on
+ * the backend, so it's a two-step: the first click swaps the item to a confirm
+ * label, the second deletes — error prevention without a modal. The confirm
+ * state resets whenever the menu closes.
+ */
+function RowMenu({ onDelete }: { onDelete: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setConfirming(false)
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="todo__menu" aria-label="task actions">
+          <MoreHorizontal size={16} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[9.5rem]">
+        {confirming ? (
+          <DropdownMenuItem style={{ color: 'var(--color-danger)' }} onSelect={() => onDelete()}>
+            <Trash2 size={14} /> click again to delete
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            style={{ color: 'var(--color-danger)' }}
+            onSelect={(e) => {
+              e.preventDefault() // keep the menu open to show the confirm step
+              setConfirming(true)
+            }}
+          >
+            <Trash2 size={14} /> delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

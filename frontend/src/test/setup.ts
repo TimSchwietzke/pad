@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import { server } from './server'
+import { resetToasts } from '../core/toast'
 
 // jsdom doesn't implement matchMedia, which the dashboard reads to pick the
 // initial light/dark mode. Stub it to "light" so the components mount.
@@ -44,5 +45,6 @@ afterEach(() => {
   server.resetHandlers()
   cleanup()
   localStorage.clear() // isolate persisted preferences between tests
+  resetToasts() // don't let a toast leak into the next test
 })
 afterAll(() => server.close())

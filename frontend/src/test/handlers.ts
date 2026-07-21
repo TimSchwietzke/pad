@@ -121,6 +121,13 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
+  http.delete('/api/todo/todos/:id', ({ params }) => {
+    const id = Number(params.id)
+    db.todos = db.todos.filter((t) => t.id !== id)
+    delete db.tagLinks[id]
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.put('/api/todo/todos/:id', async ({ request, params }) => {
     const id = Number(params.id)
     const existing = db.todos.find((t) => t.id === id)
