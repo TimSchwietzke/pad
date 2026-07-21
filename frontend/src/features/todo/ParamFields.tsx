@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode, RefObject } from 'react'
+import type { ComponentPropsWithRef, ReactNode } from 'react'
 import {
   Calendar as CalIcon,
   Check as CheckIcon,
@@ -8,7 +8,7 @@ import {
   Folder as FolderIcon,
   Tag as TagIcon,
 } from 'lucide-react'
-import { Popover } from '../../core/Popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Priority, Project, Tag } from './types'
 import { formatDue, formatEstimate, priorityLabel } from './format'
 
@@ -18,46 +18,49 @@ const Flag = () => <FlagIcon size={14} />
 const Clock = () => <ClockIcon size={14} />
 const Cal = () => <CalIcon size={14} />
 
-/** Manages a field's open state and the trigger ref shared with its Popover. */
-function useField() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLButtonElement>(null)
-  return { open, setOpen, ref }
-}
-
-/** The clickable chip that triggers a field's menu. Placeholder when unset. */
+/**
+ * The clickable chip that triggers a field's menu. Placeholder when unset.
+ * Extra props (click handler, aria-expanded, data-state, ref …) come from the
+ * Radix `PopoverTrigger asChild` and are spread onto the button.
+ */
 function Chip({
   icon,
   label,
   placeholder,
   set,
   danger,
-  triggerRef,
-  onClick,
-  expanded,
+  ...rest
 }: {
   icon: ReactNode
   label: string | null
   placeholder: string
   set: boolean
   danger?: boolean
-  triggerRef: RefObject<HTMLButtonElement | null>
-  onClick: () => void
-  expanded: boolean
-}) {
+} & ComponentPropsWithRef<'button'>) {
   return (
     <button
-      ref={triggerRef}
       type="button"
       className={`chip${set ? ' is-set' : ''}${danger ? ' is-danger' : ''}`}
-      aria-haspopup="menu"
-      aria-expanded={expanded}
       aria-label={set ? `${placeholder}: ${label}` : `set ${placeholder}`}
-      onClick={onClick}
+      {...rest}
     >
       <span className="chip__icon">{icon}</span>
       <span className="chip__label">{set ? label : placeholder}</span>
     </button>
+  )
+}
+
+/**
+ * The floating panel of a field: Radix handles anchoring, portal, outside-click
+ * and Escape; the `.popover` class keeps the token styling AND the create bar's
+ * "click inside a menu isn't outside" check working (it matches `.popover`).
+ * Radix's own auto-focus is disabled so the Menu can focus its first item.
+ */
+function FieldMenu({ children }: { children: ReactNode }) {
+  return (
+    <PopoverContent className="popover w-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <Menu>{children}</Menu>
+    </PopoverContent>
   )
 }
 
@@ -105,38 +108,35 @@ export function ProjectField({
   onChange: (v: number | null) => void
   projects: Project[]
 }) {
-  const f = useField()
+  const [open, setOpen] = useState(false)
   const current = projects.find((p) => p.id === value)
   const pick = (v: number | null) => {
     onChange(v)
-    f.setOpen(false)
+    setOpen(false)
   }
   return (
-    <>
-      <Chip
-        icon={current ? <span className="dot" style={{ background: current.color || 'var(--color-text-secondary)' }} /> : <Folder />}
-        label={current?.name ?? null}
-        placeholder="project"
-        set={value != null}
-        triggerRef={f.ref}
-        expanded={f.open}
-        onClick={() => f.setOpen((o) => !o)}
-      />
-      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
-        <Menu>
-          <MenuItem active={value == null} onClick={() => pick(null)}>
-            no project
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Chip
+          icon={current ? <span className="dot" style={{ background: current.color || 'var(--color-text-secondary)' }} /> : <Folder />}
+          label={current?.name ?? null}
+          placeholder="project"
+          set={value != null}
+        />
+      </PopoverTrigger>
+      <FieldMenu>
+        <MenuItem active={value == null} onClick={() => pick(null)}>
+          no project
+        </MenuItem>
+        {projects.map((p) => (
+          <MenuItem key={p.id} active={p.id === value} onClick={() => pick(p.id)}>
+            <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} />
+            {p.name}
           </MenuItem>
-          {projects.map((p) => (
-            <MenuItem key={p.id} active={p.id === value} onClick={() => pick(p.id)}>
-              <span className="dot" style={{ background: p.color || 'var(--color-text-secondary)' }} />
-              {p.name}
-            </MenuItem>
-          ))}
-          {projects.length === 0 && <p className="menu-empty">no projects yet</p>}
-        </Menu>
-      </Popover>
-    </>
+        ))}
+        {projects.length === 0 && <p className="menu-empty">no projects yet</p>}
+      </FieldMenu>
+    </Popover>
   )
 }
 
@@ -144,32 +144,24 @@ const PRIORITIES: Priority[] = [3, 2, 1, 0]
 
 /** priority picker — none / low / medium / high. */
 export function PriorityField({ value, onChange }: { value: Priority; onChange: (v: Priority) => void }) {
-  const f = useField()
+  const [open, setOpen] = useState(false)
   const pick = (v: Priority) => {
     onChange(v)
-    f.setOpen(false)
+    setOpen(false)
   }
   return (
-    <>
-      <Chip
-        icon={<Flag />}
-        label={value !== 0 ? priorityLabel[value] : null}
-        placeholder="priority"
-        set={value !== 0}
-        triggerRef={f.ref}
-        expanded={f.open}
-        onClick={() => f.setOpen((o) => !o)}
-      />
-      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
-        <Menu>
-          {PRIORITIES.map((p) => (
-            <MenuItem key={p} active={p === value} onClick={() => pick(p)}>
-              {p === 0 ? 'none' : priorityLabel[p]}
-            </MenuItem>
-          ))}
-        </Menu>
-      </Popover>
-    </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Chip icon={<Flag />} label={value !== 0 ? priorityLabel[value] : null} placeholder="priority" set={value !== 0} />
+      </PopoverTrigger>
+      <FieldMenu>
+        {PRIORITIES.map((p) => (
+          <MenuItem key={p} active={p === value} onClick={() => pick(p)}>
+            {p === 0 ? 'none' : priorityLabel[p]}
+          </MenuItem>
+        ))}
+      </FieldMenu>
+    </Popover>
   )
 }
 
@@ -177,65 +169,60 @@ const EFFORT_PRESETS = [15, 30, 45, 60, 90, 120]
 
 /** effort picker — minute presets plus a free numeric input. */
 export function EffortField({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
-  const f = useField()
+  const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const pick = (v: number | null) => {
     onChange(v)
-    f.setOpen(false)
+    setOpen(false)
   }
   const applyDraft = () => {
     const n = Number(draft)
     if (Number.isFinite(n) && n > 0) pick(Math.round(n))
   }
   return (
-    <>
-      <Chip
-        icon={<Clock />}
-        label={formatEstimate(value)}
-        placeholder="effort"
-        set={value != null}
-        triggerRef={f.ref}
-        expanded={f.open}
-        onClick={() => {
-          setDraft(value != null ? String(value) : '')
-          f.setOpen((o) => !o)
-        }}
-      />
-      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
-        <Menu>
-          {EFFORT_PRESETS.map((m) => (
-            <MenuItem key={m} active={m === value} onClick={() => pick(m)}>
-              {formatEstimate(m)}
-            </MenuItem>
-          ))}
-          {value != null && (
-            <MenuItem onClick={() => pick(null)}>
-              <span className="menu-item__muted">clear</span>
-            </MenuItem>
-          )}
-          <div className="menu-input">
-            <input
-              type="number"
-              min={1}
-              inputMode="numeric"
-              value={draft}
-              placeholder="minutes…"
-              aria-label="effort in minutes"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  applyDraft()
-                }
-              }}
-            />
-            <button type="button" className="menu-input__apply" onClick={applyDraft}>
-              set
-            </button>
-          </div>
-        </Menu>
-      </Popover>
-    </>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        if (o) setDraft(value != null ? String(value) : '')
+        setOpen(o)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Chip icon={<Clock />} label={formatEstimate(value)} placeholder="effort" set={value != null} />
+      </PopoverTrigger>
+      <FieldMenu>
+        {EFFORT_PRESETS.map((m) => (
+          <MenuItem key={m} active={m === value} onClick={() => pick(m)}>
+            {formatEstimate(m)}
+          </MenuItem>
+        ))}
+        {value != null && (
+          <MenuItem onClick={() => pick(null)}>
+            <span className="menu-item__muted">clear</span>
+          </MenuItem>
+        )}
+        <div className="menu-input">
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            value={draft}
+            placeholder="minutes…"
+            aria-label="effort in minutes"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                applyDraft()
+              }
+            }}
+          />
+          <button type="button" className="menu-input__apply" onClick={applyDraft}>
+            set
+          </button>
+        </div>
+      </FieldMenu>
+    </Popover>
   )
 }
 
@@ -264,51 +251,42 @@ const toDateInput = (iso: string) => {
 
 /** due-date picker — quick presets plus a native date input. */
 export function DueField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
-  const f = useField()
+  const [open, setOpen] = useState(false)
   const due = formatDue(value)
   const pick = (v: string | null) => {
     onChange(v)
-    f.setOpen(false)
+    setOpen(false)
   }
   return (
-    <>
-      <Chip
-        icon={<Cal />}
-        label={due?.label ?? null}
-        placeholder="due"
-        set={value != null}
-        danger={due?.overdue}
-        triggerRef={f.ref}
-        expanded={f.open}
-        onClick={() => f.setOpen((o) => !o)}
-      />
-      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
-        <Menu>
-          <MenuItem onClick={() => pick(inDays(0))}>today</MenuItem>
-          <MenuItem onClick={() => pick(inDays(1))}>tomorrow</MenuItem>
-          <MenuItem onClick={() => pick(thisWeekend())}>this weekend</MenuItem>
-          <MenuItem onClick={() => pick(nextWeek())}>next week</MenuItem>
-          {value != null && (
-            <MenuItem onClick={() => pick(null)}>
-              <span className="menu-item__muted">clear</span>
-            </MenuItem>
-          )}
-          <div className="menu-input">
-            <input
-              type="date"
-              value={value ? toDateInput(value) : ''}
-              aria-label="due date"
-              onChange={(e) => {
-                const v = e.target.value
-                if (!v) return pick(null)
-                const [y, m, d] = v.split('-').map(Number)
-                pick(new Date(y, m - 1, d).toISOString())
-              }}
-            />
-          </div>
-        </Menu>
-      </Popover>
-    </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Chip icon={<Cal />} label={due?.label ?? null} placeholder="due" set={value != null} danger={due?.overdue} />
+      </PopoverTrigger>
+      <FieldMenu>
+        <MenuItem onClick={() => pick(inDays(0))}>today</MenuItem>
+        <MenuItem onClick={() => pick(inDays(1))}>tomorrow</MenuItem>
+        <MenuItem onClick={() => pick(thisWeekend())}>this weekend</MenuItem>
+        <MenuItem onClick={() => pick(nextWeek())}>next week</MenuItem>
+        {value != null && (
+          <MenuItem onClick={() => pick(null)}>
+            <span className="menu-item__muted">clear</span>
+          </MenuItem>
+        )}
+        <div className="menu-input">
+          <input
+            type="date"
+            value={value ? toDateInput(value) : ''}
+            aria-label="due date"
+            onChange={(e) => {
+              const v = e.target.value
+              if (!v) return pick(null)
+              const [y, m, d] = v.split('-').map(Number)
+              pick(new Date(y, m - 1, d).toISOString())
+            }}
+          />
+        </div>
+      </FieldMenu>
+    </Popover>
   )
 }
 
@@ -327,7 +305,7 @@ export function TagsField({
   onToggle: (tagId: number, currentlyOn: boolean) => void
   onCreate: (name: string) => void
 }) {
-  const f = useField()
+  const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const has = (id: number) => value.some((t) => t.id === id)
   const create = () => {
@@ -337,41 +315,38 @@ export function TagsField({
     setDraft('')
   }
   return (
-    <>
-      <Chip
-        icon={<TagIcon size={14} />}
-        label={value.length ? value.map((t) => t.name).join(', ') : null}
-        placeholder="tags"
-        set={value.length > 0}
-        triggerRef={f.ref}
-        expanded={f.open}
-        onClick={() => f.setOpen((o) => !o)}
-      />
-      <Popover anchorRef={f.ref} open={f.open} onClose={() => f.setOpen(false)}>
-        <Menu>
-          {allTags.map((t) => (
-            <MenuItem key={t.id} active={has(t.id)} onClick={() => onToggle(t.id, has(t.id))}>
-              <span className="menu-check">{has(t.id) && <CheckIcon size={14} />}</span>#{t.name}
-            </MenuItem>
-          ))}
-          {allTags.length === 0 && <p className="menu-empty">no tags yet</p>}
-          <div className="menu-input">
-            <input
-              value={draft}
-              placeholder="new tag…"
-              aria-label="new tag"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  create()
-                }
-              }}
-            />
-            <button type="button" className="menu-input__apply" onClick={create}>add</button>
-          </div>
-        </Menu>
-      </Popover>
-    </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Chip
+          icon={<TagIcon size={14} />}
+          label={value.length ? value.map((t) => t.name).join(', ') : null}
+          placeholder="tags"
+          set={value.length > 0}
+        />
+      </PopoverTrigger>
+      <FieldMenu>
+        {allTags.map((t) => (
+          <MenuItem key={t.id} active={has(t.id)} onClick={() => onToggle(t.id, has(t.id))}>
+            <span className="menu-check">{has(t.id) && <CheckIcon size={14} />}</span>#{t.name}
+          </MenuItem>
+        ))}
+        {allTags.length === 0 && <p className="menu-empty">no tags yet</p>}
+        <div className="menu-input">
+          <input
+            value={draft}
+            placeholder="new tag…"
+            aria-label="new tag"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                create()
+              }
+            }}
+          />
+          <button type="button" className="menu-input__apply" onClick={create}>add</button>
+        </div>
+      </FieldMenu>
+    </Popover>
   )
 }
