@@ -256,6 +256,14 @@ input {
   outline: none;
   color: var(--color-text-primary);
 }
+/* Placeholders use the AA-checked token at full opacity — browsers otherwise
+   render them with a dimmed default that fails contrast. (A disabled/coming-soon
+   field is intentionally dimmed and exempt from the requirement.) */
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-placeholder);
+  opacity: 1;
+}
 /* keyboard hint chip (⌘K / Ctrl K) at the trailing edge of the search field */
 .search__kbd {
   flex: none;
@@ -887,8 +895,13 @@ button.rail-proj__row:hover {
    chip's own menu is open (so picking a value doesn't make the trigger vanish).
    visibility (not display) keeps their width and the param line's height reserved,
    so hovering never shifts the layout. */
-.todo:not(:hover):not(:focus-within) .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
-  visibility: hidden;
+/* On pointer devices the unset chips stay quiet until the row is hovered or
+   focused. Touch devices have no hover, so there they'd be permanently hidden —
+   gate the hide behind (hover: hover) so touch always shows them (reachable). */
+@media (hover: hover) {
+  .todo:not(:hover):not(:focus-within) .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
+    visibility: hidden;
+  }
 }
 /* compact mode keeps the list quiet: unset chips never show */
 .todo-list--compact .todo__params .chip:not(.is-set):not([aria-expanded='true']) {
@@ -1403,6 +1416,117 @@ button.rail-proj__row:hover {
   .dash-grid,
   .dash-tiles {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- coming-soon controls (honest placeholders, not dead buttons) ---------- */
+/* a not-yet-live control reads as deliberately inactive: dimmed, no pointer, and
+   (on the search) a trailing "soon" tag instead of the ⌘K hint */
+.is-soon {
+  opacity: 0.55;
+  cursor: default;
+}
+.search.is-soon:focus-within {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+.search__soon {
+  flex: none;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  background: var(--color-bg-surface);
+}
+
+/* ---------- per-row actions menu (kebab -> delete, with inline confirm) ------ */
+.todo__menu {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-placeholder);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease-out), color var(--motion) var(--ease-out),
+    background var(--motion) var(--ease-out);
+}
+.todo:hover .todo__menu,
+.todo__menu[data-state='open'] {
+  opacity: 0.7;
+}
+.todo__menu:hover,
+.todo__menu[data-state='open'] {
+  opacity: 1;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-surface-2);
+}
+/* touch: no hover, so the affordance must always be reachable */
+@media (hover: none) {
+  .todo__menu {
+    opacity: 0.7;
+  }
+}
+
+/* ---------- toasts (mutation failures surface here, bottom-right) ---------- */
+.toaster {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface-3);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  animation: toast-in var(--motion) var(--ease-out);
+}
+/* severity shows in the full border colour (not a side-stripe) */
+.toast--error {
+  border-color: var(--color-danger);
+}
+.toast__msg {
+  flex: 1;
+}
+.toast__x {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.toast__x:hover {
+  color: var(--color-text-primary);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
   }
 }
 

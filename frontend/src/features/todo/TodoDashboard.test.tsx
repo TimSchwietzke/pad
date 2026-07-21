@@ -383,15 +383,13 @@ describe('TodoDashboard', () => {
     expect(app.dataset.sidebar).toBe('closed')
   })
 
-  it('focuses the search field with the ⌘K / Ctrl+K shortcut', async () => {
-    const user = userEvent.setup()
+  it('shows search as a disabled "coming soon" field until it is wired up', async () => {
     renderWithClient(<TodoDashboard />)
     await screen.findByRole('button', { name: 'toggle sidebar' })
 
     const search = screen.getByLabelText('search')
-    expect(search).not.toHaveFocus()
-    await user.keyboard('{Control>}k{/Control}')
-    expect(search).toHaveFocus()
+    expect(search).toBeDisabled()
+    expect(search.getAttribute('placeholder')).toMatch(/coming soon/i)
   })
 
   it('assigns a tag to a todo from the tags field', async () => {
@@ -495,6 +493,41 @@ describe('TodoDashboard', () => {
     expect(screen.getByRole('button', { name: /copied/ })).toBeInTheDocument()
   })
 
+  it('deletes a task from the row menu after a confirm step', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'delete me' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+    const row = (await screen.findByText('delete me')).closest('.todo') as HTMLElement
+
+    await user.click(within(row).getByRole('button', { name: 'task actions' }))
+    // first click asks to confirm — the task is still there
+    await user.click(await screen.findByRole('menuitem', { name: 'delete' }))
+    expect(screen.getByText('delete me')).toBeInTheDocument()
+
+    // second click actually deletes it
+    await user.click(await screen.findByRole('menuitem', { name: /click again to delete/i }))
+    await waitFor(() => expect(screen.queryByText('delete me')).not.toBeInTheDocument())
+  })
+
+  it('surfaces a toast and rolls back when a save fails', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha', priority: 0 })] })
+    server.use(
+      http.put('/api/todo/todos/:id', () =>
+        HttpResponse.json({ error: { code: 'boom', message: 'nope' } }, { status: 500 }),
+      ),
+    )
+    const user = userEvent.setup()
+    await openTodos(user)
+    const row = (await screen.findByText('alpha')).closest('.todo') as HTMLElement
+
+    await user.click(within(row).getByRole('button', { name: 'set priority' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'high' }))
+
+    // the failed save is announced, and the optimistic "high" reverts
+    expect(await screen.findByText(/save your change/i)).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('high')).not.toBeInTheDocument())
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>
@@ -504,6 +537,6 @@ describe('TodoDashboard', () => {
     const user = userEvent.setup()
     await openTodos(user)
 
-    expect(await screen.findByText(/load tasks/i)).toBeInTheDocument()
+    expect(await screen.findByText(/load your tasks/i)).toBeInTheDocument()
   })
 })

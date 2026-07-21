@@ -1,7 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
+import { createQueryClient } from './core/queryClient'
 import './styles/tokens.scss'
 import './App.scss'
 // Tailwind last: its utilities layer on top of the token-driven component styles above.
@@ -10,7 +11,7 @@ import './tailwind.css'
 // One query client for the whole app. Sharing a single cache is what lets the
 // health check today — and todos, calendar, etc. later — dedupe requests and
 // refetch on their own schedule.
-const queryClient = new QueryClient()
+const queryClient = createQueryClient()
 
 // Order matters: tokens.scss defines the CSS variables that App.scss reads, so
 // it has to be imported first.

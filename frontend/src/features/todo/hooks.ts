@@ -85,12 +85,25 @@ export function useReorderTodos() {
   })
 }
 
-/** Deletes a todo and refreshes the lists. */
+/**
+ * Deletes a todo. Optimistic: the row leaves every cached list immediately so the
+ * click feels instant, and is restored if the request fails (the global mutation
+ * error toast then explains why). A refetch reconciles afterwards.
+ */
 export function useDeleteTodo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => todoApi.deleteTodo(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.todos }),
+    onMutate: async (id: number) => {
+      await qc.cancelQueries({ queryKey: keys.todos })
+      const prev = qc.getQueriesData<Todo[]>({ queryKey: keys.todos })
+      qc.setQueriesData<Todo[]>({ queryKey: keys.todos }, (old) => old?.filter((t) => t.id !== id))
+      return { prev }
+    },
+    onError: (_err, _id, ctx) => {
+      ctx?.prev?.forEach(([key, data]) => qc.setQueryData(key, data))
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.todos }),
   })
 }
 
