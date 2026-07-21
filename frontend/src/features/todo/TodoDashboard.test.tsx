@@ -470,6 +470,31 @@ describe('TodoDashboard', () => {
     expect(screen.queryByText('plain task')).not.toBeInTheDocument()
   })
 
+  it('copies the visible list as markdown from the share menu', async () => {
+    resetDb({
+      projects: [{ id: 1, name: 'work', color: '#f00', created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z' }],
+      todos: [makeTodo({ id: 1, title: 'alpha', project_id: 1, estimate_minutes: 45, tags: [{ id: 5, name: 'urgent' }] })],
+      tags: [{ id: 5, name: 'urgent' }],
+    })
+    const user = userEvent.setup()
+    await openTodos(user)
+    await screen.findByText('alpha')
+
+    await user.click(screen.getByRole('button', { name: 'share' }))
+    // field toggles: switch effort off, keep the rest
+    await user.click(await screen.findByRole('button', { name: 'effort' }))
+    await user.click(screen.getByRole('button', { name: 'copy' }))
+
+    const md = await navigator.clipboard.readText()
+    expect(md).toContain('# to-dos')
+    expect(md).toContain('- [ ] alpha — work · #urgent')
+    expect(md).not.toContain('45 min')
+    // the choice persisted for next time
+    expect(JSON.parse(localStorage.getItem('pad.export.fields')!)).not.toContain('effort')
+    // feedback on the button itself
+    expect(screen.getByRole('button', { name: /copied/ })).toBeInTheDocument()
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>
