@@ -14,6 +14,8 @@ import {
 } from './hooks'
 import type { Priority, Project, Tag, Todo, TodoInput } from './types'
 import { DueField, EffortField, PriorityField, ProjectField, TagsField } from './ParamFields'
+import { buildMarkdown, exportFields, exportFilename } from './exportMd'
+import type { ExportField, ExportSection } from './exportMd'
 import { formatDue, formatEstimate } from './format'
 import { bucketLabel, bucketOf, bucketOrder, openDueOn, startOfDay, triageStats } from './triage'
 import type { Bucket } from './triage'
@@ -40,6 +42,7 @@ import {
   X as XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -369,6 +372,18 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     }
   }
 
+  // The export mirrors exactly what's on screen: same filters, same order, same
+  // grouping — the list rows just get folded into labelled sections.
+  const exportSections: ExportSection[] = []
+  for (const row of listRows) {
+    if (row.kind === 'header') {
+      exportSections.push({ label: bucketLabel[row.bucket], todos: [] })
+    } else {
+      if (exportSections.length === 0) exportSections.push({ label: null, todos: [] })
+      exportSections[exportSections.length - 1].todos.push(row.todo)
+    }
+  }
+
   return (
     <div className="app" data-preset={preset} data-mode={mode} data-sidebar={sidebarOpen ? 'open' : 'closed'}>
       {/* full-width header: the panel toggle sits top-left in one fixed spot, the search
@@ -489,9 +504,8 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                       <h1 className="page-title">to-dos</h1>
                       <p className="page-sub">{pendingLabel(todos.isPending, openCount)}</p>
                     </div>
-                    {/* share lands in its own slice (markdown export); shown as the entry point */}
                     <div className="page-head__actions">
-                      <button className="ghost-btn" type="button"><Share /> share</button>
+                      <ShareMenu sections={exportSections} projects={projects.data ?? []} />
                     </div>
                   </div>
                   {/* only lights up when there's date-driven signal — quiet when nothing's due */}
@@ -817,6 +831,92 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
         </main>
       </div>
     </div>
+  )
+}
+
+// Menu labels for the export fields ("due" reads better as "due date" here).
+const exportFieldLabels: Record<ExportField, string> = {
+  project: 'project',
+  due: 'due date',
+  priority: 'priority',
+  effort: 'effort',
+  tags: 'tags',
+}
+
+/**
+ * The share menu: exports the currently visible list (same filters, order and
+ * grouping as on screen) as markdown — copy to clipboard or download as .md.
+ * The field toggles choose what each task line carries; the choice persists
+ * like the other device preferences.
+ */
+function ShareMenu({ sections, projects }: { sections: ExportSection[]; projects: Project[] }) {
+  const [open, setOpen] = useState(false)
+  const [fields, setFields] = usePersistentState<ExportField[]>('pad.export.fields', exportFields)
+  // The copy button reports its own outcome briefly — success AND failure
+  // (clipboard access can be denied or the document unfocused).
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copiedTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), [])
+
+  const count = sections.reduce((n, s) => n + s.todos.length, 0)
+  const toggle = (f: ExportField) =>
+    setFields(fields.includes(f) ? fields.filter((x) => x !== f) : [...fields, f])
+  const markdown = () => buildMarkdown(sections, fields, projects)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown())
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+    window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => setCopyState('idle'), 1500)
+  }
+
+  const download = () => {
+    const blob = new Blob([markdown()], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = exportFilename()
+    a.click()
+    URL.revokeObjectURL(url)
+    setOpen(false)
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="ghost-btn" type="button">
+          <Share /> share
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="popover w-auto" align="end" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <div className="menu">
+          <p className="menu-note">
+            {count === 0 ? 'nothing to export — the list is empty' : `exports the ${count} ${count === 1 ? 'task' : 'tasks'} shown, as listed`}
+          </p>
+          {exportFields.map((f) => {
+            const on = fields.includes(f)
+            return (
+              <button key={f} type="button" className="menu-item" aria-pressed={on} onClick={() => toggle(f)}>
+                <span className="menu-check">{on && <CheckIcon size={14} />}</span>
+                {exportFieldLabels[f]}
+              </button>
+            )
+          })}
+          <div className="menu-actions">
+            <button type="button" className="menu-btn" disabled={count === 0} onClick={copy}>
+              {copyState === 'copied' ? 'copied ✓' : copyState === 'failed' ? "couldn't copy" : 'copy'}
+            </button>
+            <button type="button" className="menu-btn menu-btn--primary" disabled={count === 0} onClick={download}>
+              download .md
+            </button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 

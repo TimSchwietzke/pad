@@ -132,8 +132,9 @@ Braucht nur **Docker Desktop** — kein lokales Go/Postgres-Setup.
 
 - **Sortierung kombinieren (sort by + then by):** das Sort-Menü hat jetzt zwei Sektionen — Primärkriterium plus optionales „then by" als Tiebreaker (z. B. Deadline, bei Gleichstand höchste Priorität zuerst; Backend-`?sort=a,b`). Auswahl hält das Menü offen (beide Kriterien in einem Besuch), Trigger zeigt `deadline · priority`; „custom" ist als manuelle Total-Ordnung vom Tiebreaker ausgenommen
 
+- **Markdown-Export („share"):** der share-Button ist jetzt echt — ein Popover exportiert **genau die sichtbare Liste** (Filter, Sortierung und Datums-Gruppierung wie auf dem Schirm) als GitHub-flavoured Markdown: H2 je Bucket, `- [ ]`/`- [x]`-Checkboxen, Feldauswahl (Projekt/Deadline/Priorität/Aufwand/Tags, geräteweit gespeichert). Zwei Wege: in die Zwischenablage kopieren (mit sichtbarem Erfolg **und** Fehlschlag am Button) oder als datierte `.md`-Datei laden. Reine Frontend-Slice (`exportMd.ts` pur + unit-getestet, MSW-Komponententest für den Copy-Flow)
+
 ### WIP / ToDo
-- **Export / „share"** — ausgewählte Aufgaben als Markdown (`.md`) exportieren, mit Feldauswahl (Projekt, Tags, Aufwand, Deadline …). Geplant.
 - **Listen-Gruppierung ausbauen** — die Zeitraum-Gruppierung (Datums-Buckets) steht; offen bleiben Gruppierung **pro Projekt** und frei wählbare/anpassbare Gruppierungs-Achsen. Geplant.
 - **Konfigurierbares Dashboard** als Startseite (Widgets: was wird wo angezeigt). Geplant.
 - **Daten/Analytics** — modulübergreifende Infos, evtl. eigenes Analytics-Modul. Offen.

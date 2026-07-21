@@ -1015,6 +1015,51 @@ button.rail-proj__row:hover {
   margin-top: 4px;
   border-top: 1px solid var(--color-border);
 }
+/* one quiet context line at the top of a menu (e.g. what the export covers) */
+.menu-note {
+  margin: 0;
+  padding: 5px 10px 7px;
+  max-width: 15rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+}
+/* action footer of a menu: secondary + primary side by side */
+.menu-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+.menu-btn {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.menu-btn:hover:not(:disabled) {
+  background: var(--color-bg-surface);
+}
+.menu-btn--primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.menu-btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+.menu-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .menu-input input {
   flex: 1;
   min-width: 0;
