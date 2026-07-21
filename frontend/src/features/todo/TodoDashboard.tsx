@@ -254,9 +254,12 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   // After creating, briefly highlight the new task once it lands in its sorted spot.
   const [newId, setNewId] = useState<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
-  const handleCreate = (input: TodoInput) => {
+  const handleCreate = (input: TodoInput, tagIds: number[]) => {
     create.mutate(input, {
       onSuccess: (todo) => {
+        // tags picked in the create tile attach right after the todo exists;
+        // the list refetch (tags are embedded) then shows them on the new row
+        tagIds.forEach((tagId) => addTag.mutate({ todoId: todo.id, tagId }))
         setNewId(todo.id)
         window.clearTimeout(flashTimer.current)
         // keep in sync with the todo-flash animation duration in App.scss
@@ -600,7 +603,12 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                 </div>
 
                 {/* sticky create row, pinned above the list (see CreateBar) */}
-                <CreateBar projects={projects.data ?? []} onCreate={handleCreate} />
+                <CreateBar
+                  projects={projects.data ?? []}
+                  tags={tags.data ?? []}
+                  onCreate={handleCreate}
+                  onCreateTag={(name, onDone) => createTag.mutate(name, { onSuccess: onDone })}
+                />
 
                 {todos.isError && <p className="state state--error">couldn’t load tasks — is the backend running on :8080?</p>}
 
@@ -1022,13 +1030,26 @@ function RailProjects({
  * in the title input + the four param chips. Enter creates and keeps it open for
  * rapid entry; Escape closes, and a click outside closes only while it's empty.
  */
-function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (input: TodoInput) => void }) {
+function CreateBar({
+  projects,
+  tags,
+  onCreate,
+  onCreateTag,
+}: {
+  projects: Project[]
+  tags: Tag[]
+  onCreate: (input: TodoInput, tagIds: number[]) => void
+  onCreateTag: (name: string, onDone: (tag: Tag) => void) => void
+}) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [projectId, setProjectId] = useState<number | null>(null)
   const [priority, setPriority] = useState<Priority>(0)
   const [due, setDue] = useState<string | null>(null)
   const [effort, setEffort] = useState<number | null>(null)
+  // Tags picked for the task being drafted. They only exist client-side until
+  // Enter creates the todo — the parent then attaches them to the new row.
+  const [selTags, setSelTags] = useState<Tag[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -1038,6 +1059,7 @@ function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (inp
     setPriority(0)
     setDue(null)
     setEffort(null)
+    setSelTags([])
   }
   const close = () => {
     setOpen(false)
@@ -1065,7 +1087,8 @@ function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (inp
   // A click outside closes the editor, but only while nothing was entered yet —
   // set params or a typed title survive a stray click. Field menus are portaled,
   // so clicks inside `.popover` don't count as outside.
-  const dirty = title.trim() !== '' || projectId != null || priority !== 0 || due != null || effort != null
+  const dirty =
+    title.trim() !== '' || projectId != null || priority !== 0 || due != null || effort != null || selTags.length > 0
   useEffect(() => {
     if (!open || dirty) return
     const onDown = (e: MouseEvent) => {
@@ -1106,7 +1129,10 @@ function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (inp
           e.preventDefault()
           const t = title.trim()
           if (!t) return
-          onCreate({ title: t, project_id: projectId, priority, status: 'open', due_at: due, estimate_minutes: effort })
+          onCreate(
+            { title: t, project_id: projectId, priority, status: 'open', due_at: due, estimate_minutes: effort },
+            selTags.map((tag) => tag.id),
+          )
           reset()
           inputRef.current?.focus() // keep open for rapid entry
         }}
@@ -1129,6 +1155,20 @@ function CreateBar({ projects, onCreate }: { projects: Project[]; onCreate: (inp
           <DueField value={due} onChange={setDue} />
           <PriorityField value={priority} onChange={setPriority} />
           <EffortField value={effort} onChange={setEffort} />
+          <TagsField
+            value={selTags}
+            allTags={tags}
+            onToggle={(tagId, on) =>
+              setSelTags((prev) => {
+                if (on) return prev.filter((t) => t.id !== tagId)
+                const tag = tags.find((t) => t.id === tagId)
+                return tag ? [...prev, tag] : prev
+              })
+            }
+            onCreate={(name) =>
+              onCreateTag(name, (tag) => setSelTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag])))
+            }
+          />
         </div>
       </form>
     </div>
