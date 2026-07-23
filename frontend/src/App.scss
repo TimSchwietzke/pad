@@ -794,6 +794,102 @@ button.rail-proj__row:hover {
 .todo__title {
   font-size: 0.95rem;
 }
+/* the title doubles as the open-editor affordance: a plain-looking button that
+   only hints interactivity on hover (keeps the resting list calm) */
+.todo__title--btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.todo__title--btn:hover {
+  color: var(--color-primary);
+}
+/* rename-in-place input, sized to sit exactly where the title text was */
+.todo__title-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  outline: none;
+}
+.todo__title-input:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+/* an open (editing) row lifts onto a surface so the editor reads as one panel */
+.todo.is-open {
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-card);
+  border-bottom-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.todo.is-open::before {
+  display: none; /* the surface replaces the hover wash while editing */
+}
+/* while editing, every param chip is visible (no hover needed) */
+.todo.is-open .todo__params .chip {
+  visibility: visible;
+}
+
+/* notes editor, revealed under the params when a row is open */
+.todo__notes-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+.todo__notes-label {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+.todo__notes {
+  width: 100%;
+  resize: vertical;
+  min-height: 56px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  outline: none;
+}
+.todo__notes:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+/* collapse control — mirrors the kebab's slot so the row width is stable */
+.todo__collapse {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.todo__collapse:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface-2);
+}
 
 /* custom-priority / reorder handle — subtle until hovered, active in custom sort */
 .todo__handle {

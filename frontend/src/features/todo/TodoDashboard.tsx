@@ -39,6 +39,7 @@ import {
   GripVertical,
   ArrowUpDown,
   ChevronDown,
+  ChevronUp,
   Check as CheckIcon,
   X as XIcon,
   MoreHorizontal,
@@ -321,6 +322,51 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
       },
     })
   }
+
+  // Expanding a row opens an inline editor for the two fields the chips don't
+  // cover — the title (rename) and notes. Only one row edits at a time; the
+  // drafts hold the in-progress values and save on blur / on close.
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [notesDraft, setNotesDraft] = useState('')
+
+  const openEditor = (todo: Todo) => {
+    setEditingId(todo.id)
+    setTitleDraft(todo.title)
+    setNotesDraft(todo.notes)
+  }
+  /** Persist a changed title (a blank one reverts — a task must keep a name). */
+  const saveTitle = (todo: Todo) => {
+    const t = titleDraft.trim()
+    if (t && t !== todo.title) patchTodo(todo, { title: t })
+    else if (!t) setTitleDraft(todo.title)
+  }
+  const saveNotes = (todo: Todo) => {
+    if (notesDraft !== todo.notes) patchTodo(todo, { notes: notesDraft })
+  }
+  /** Flush both fields, then collapse the editor. */
+  const closeEditor = (todo: Todo) => {
+    saveTitle(todo)
+    saveNotes(todo)
+    setEditingId(null)
+  }
+
+  // A click outside the open row collapses its editor (saving first). Clicks
+  // inside the row, or inside a portaled field menu (.popover, rendered on
+  // document.body), don't count as outside. Re-runs as the drafts change so the
+  // save on close always sees the latest values.
+  useEffect(() => {
+    if (editingId == null) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest(`[data-todo-id="${editingId}"]`) || t.closest('.popover')) return
+      const todo = (todos.data ?? []).find((x) => x.id === editingId)
+      if (todo) closeEditor(todo)
+      else setEditingId(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [editingId, titleDraft, notesDraft, todos.data])
 
   const openCount = (todos.data ?? []).filter((t) => t.status === 'open').length
 
@@ -752,9 +798,11 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                         </li>
                       )
                     const todo = row.todo
+                    const isEditing = editingId === todo.id
                     const cls =
                       'todo' +
                       (todo.status === 'done' ? ' is-done' : '') +
+                      (isEditing ? ' is-open' : '') +
                       (dragId === todo.id ? ' is-dragging' : '') +
                       (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
                       (newId === todo.id ? ' is-new' : '') +
@@ -764,7 +812,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                         className={cls}
                         key={todo.id}
                         data-todo-id={todo.id}
-                        draggable
+                        draggable={!isEditing}
                         onDragStart={() => setDragId(todo.id)}
                         onDragEnd={() => {
                           setDragId(null)
@@ -790,9 +838,32 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                         />
                         <div className="todo__body">
                           <div className="todo__line">
-                            <span className="todo__title">{todo.title}</span>
+                            {isEditing ? (
+                              // rename in place; blank reverts, Enter commits, Escape closes
+                              <input
+                                className="todo__title-input"
+                                value={titleDraft}
+                                aria-label="edit title"
+                                autoFocus
+                                onChange={(e) => setTitleDraft(e.target.value)}
+                                onBlur={() => saveTitle(todo)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    closeEditor(todo) // commit both fields and collapse
+                                  }
+                                  if (e.key === 'Escape') closeEditor(todo)
+                                }}
+                              />
+                            ) : (
+                              // clicking the title opens the editor (rename + notes)
+                              <button type="button" className="todo__title todo__title--btn" onClick={() => openEditor(todo)}>
+                                {todo.title}
+                              </button>
+                            )}
                           </div>
-                          {/* inline param fields — set values show; empty ones reveal on hover/focus */}
+                          {/* inline param fields — set values show; empty ones reveal on hover/focus
+                              (and always while the row is open for editing) */}
                           <div className="todo__params">
                             <ProjectField value={todo.project_id} projects={projects.data ?? []} onChange={(v) => patchTodo(todo, { project_id: v })} />
                             <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
@@ -805,8 +876,31 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                               onCreate={(name) => createAndAttachTag(todo.id, name)}
                             />
                           </div>
+                          {isEditing && (
+                            <label className="todo__notes-field">
+                              <span className="todo__notes-label">notes</span>
+                              <textarea
+                                className="todo__notes"
+                                value={notesDraft}
+                                placeholder="add notes…"
+                                rows={3}
+                                aria-label="edit notes"
+                                onChange={(e) => setNotesDraft(e.target.value)}
+                                onBlur={() => saveNotes(todo)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') closeEditor(todo)
+                                }}
+                              />
+                            </label>
+                          )}
                         </div>
-                        <RowMenu onDelete={() => remove.mutate(todo.id)} />
+                        {isEditing ? (
+                          <button type="button" className="todo__collapse" aria-label="close editor" onClick={() => closeEditor(todo)}>
+                            <ChevronUp size={16} />
+                          </button>
+                        ) : (
+                          <RowMenu onDelete={() => remove.mutate(todo.id)} />
+                        )}
                         {/* in custom sort the handle is the drag affordance; otherwise a hint */}
                         <span className="todo__handle" aria-hidden><Grip /></span>
                       </li>
