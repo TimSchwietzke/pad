@@ -528,6 +528,60 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(screen.queryByText('high')).not.toBeInTheDocument())
   })
 
+  it('renames a task from its inline editor', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'old name' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: 'old name' }))
+    const input = await screen.findByLabelText('edit title')
+    await user.clear(input)
+    await user.type(input, 'new name{Enter}')
+
+    // Enter commits and collapses; the row shows the new title
+    expect(await screen.findByRole('button', { name: 'new name' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('edit title')).not.toBeInTheDocument()
+  })
+
+  it('keeps the original title when a rename is left blank', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'keep me' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: 'keep me' }))
+    await user.clear(await screen.findByLabelText('edit title'))
+    await user.click(screen.getByRole('button', { name: 'close editor' }))
+
+    expect(await screen.findByRole('button', { name: 'keep me' })).toBeInTheDocument()
+  })
+
+  it('collapses the editor when clicking outside the row', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: 'alpha' }))
+    expect(screen.getByLabelText('edit title')).toBeInTheDocument()
+
+    // a click outside the open row closes its editor
+    await user.click(screen.getByRole('heading', { name: 'to-dos' }))
+    await waitFor(() => expect(screen.queryByLabelText('edit title')).not.toBeInTheDocument())
+  })
+
+  it('adds notes to a task and shows them again on reopen', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'alpha', notes: '' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: 'alpha' }))
+    await user.type(await screen.findByLabelText('edit notes'), 'remember the milk')
+    await user.click(screen.getByRole('button', { name: 'close editor' }))
+
+    // reopening the editor shows the persisted notes
+    await user.click(await screen.findByRole('button', { name: 'alpha' }))
+    await waitFor(() => expect(screen.getByLabelText('edit notes')).toHaveValue('remember the milk'))
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>
