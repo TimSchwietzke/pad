@@ -170,6 +170,32 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(requestedSorts()).toContain('position'))
   })
 
+  it('reorders from the row menu (move down) using the visible order', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'a', position: 0 }),
+        makeTodo({ id: 2, title: 'b', position: 1 }),
+        makeTodo({ id: 3, title: 'c', position: 2 }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+
+    const titles = () => [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    await waitFor(() => expect(titles()).toEqual(['a', 'b', 'c']))
+
+    // top row: only "move down" (nothing above it)
+    await user.click(screen.getAllByRole('button', { name: 'task actions' })[0])
+    expect(screen.queryByRole('menuitem', { name: 'move up' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('menuitem', { name: 'move down' }))
+
+    await waitFor(() => expect(titles()).toEqual(['b', 'a', 'c']))
+    expect(container.querySelector('.todo-list--custom')).toBeTruthy()
+    await waitFor(() => expect(requestedSorts()).toContain('position'))
+  })
+
   it('changes the preset from the settings view and persists it', async () => {
     const user = userEvent.setup()
     renderWithClient(<TodoDashboard />)

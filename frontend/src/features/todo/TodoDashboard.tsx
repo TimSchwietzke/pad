@@ -38,6 +38,8 @@ import {
   AlignJustify,
   GripVertical,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   ChevronDown,
   ChevronUp,
   Check as CheckIcon,
@@ -414,6 +416,32 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
       if (showHeaders) listRows.push({ kind: 'header', bucket: b, count: arr.length })
       for (const t of arr) listRows.push({ kind: 'todo', todo: t })
     }
+  }
+
+  // The exact on-screen order of task ids (across buckets) — the basis for
+  // menu reorder, so "up"/"down" mean what the user sees, not the raw fetch
+  // order (which also holds filtered-out / done tasks).
+  const orderedIds: number[] = []
+  for (const r of listRows) if (r.kind === 'todo') orderedIds.push(r.todo.id)
+
+  /**
+   * Move a todo one slot up (-1) or down (+1) past its visible neighbour and
+   * persist the result as the custom order — the no-mouse equivalent of a drag.
+   */
+  const moveBy = (id: number, dir: -1 | 1) => {
+    const i = orderedIds.indexOf(id)
+    const j = i + dir
+    if (i === -1 || j < 0 || j >= orderedIds.length) return
+    const neighborId = orderedIds[j]
+    const full = todos.data ?? []
+    const from = full.findIndex((t) => t.id === id)
+    if (from === -1 || !full.some((t) => t.id === neighborId)) return
+    const next = [...full]
+    const [moved] = next.splice(from, 1)
+    const nbIdx = next.findIndex((t) => t.id === neighborId)
+    next.splice(dir === -1 ? nbIdx : nbIdx + 1, 0, moved)
+    reorder.mutate(next)
+    if (sort !== 'custom') setSort('custom')
   }
 
   // The export mirrors exactly what's on screen: same filters, same order, same
@@ -899,7 +927,18 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                             <ChevronUp size={16} />
                           </button>
                         ) : (
-                          <RowMenu onDelete={() => remove.mutate(todo.id)} />
+                          (() => {
+                            const i = orderedIds.indexOf(todo.id)
+                            return (
+                              <RowMenu
+                                onDelete={() => remove.mutate(todo.id)}
+                                onMoveUp={() => moveBy(todo.id, -1)}
+                                onMoveDown={() => moveBy(todo.id, 1)}
+                                canUp={i > 0}
+                                canDown={i >= 0 && i < orderedIds.length - 1}
+                              />
+                            )
+                          })()
                         )}
                         {/* in custom sort the handle is the drag affordance; otherwise a hint */}
                         <span className="todo__handle" aria-hidden><Grip /></span>
@@ -1021,7 +1060,19 @@ function ShareMenu({ sections, projects }: { sections: ExportSection[]; projects
  * label, the second deletes — error prevention without a modal. The confirm
  * state resets whenever the menu closes.
  */
-function RowMenu({ onDelete }: { onDelete: () => void }) {
+function RowMenu({
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  canUp,
+  canDown,
+}: {
+  onDelete: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  canUp: boolean
+  canDown: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   return (
@@ -1038,6 +1089,18 @@ function RowMenu({ onDelete }: { onDelete: () => void }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[9.5rem]">
+        {/* reorder without a mouse — the keyboard/menu path to the custom order */}
+        {canUp && (
+          <DropdownMenuItem onSelect={() => onMoveUp()}>
+            <ArrowUp size={14} /> move up
+          </DropdownMenuItem>
+        )}
+        {canDown && (
+          <DropdownMenuItem onSelect={() => onMoveDown()}>
+            <ArrowDown size={14} /> move down
+          </DropdownMenuItem>
+        )}
+        {(canUp || canDown) && <DropdownMenuSeparator />}
         {confirming ? (
           <DropdownMenuItem style={{ color: 'var(--color-danger)' }} onSelect={() => onDelete()}>
             <Trash2 size={14} /> click again to delete
