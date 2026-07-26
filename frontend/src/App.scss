@@ -1554,11 +1554,17 @@ button.rail-proj__row:hover {
     background var(--motion) var(--ease-out);
 }
 .todo:hover .todo__menu,
+.todo:focus-within .todo__menu,
 .todo__menu[data-state='open'] {
   opacity: 0.7;
 }
-.todo__menu:hover,
-.todo__menu[data-state='open'] {
+/* keyboard focus must MAKE IT VISIBLE, not just ring an invisible button —
+   otherwise the menu (the no-mouse reorder path) can't be seen while tabbing.
+   The `.todo` prefix is load-bearing: without it these lose on specificity to
+   `.todo:focus-within .todo__menu` above and the button stays at 0.7. */
+.todo .todo__menu:hover,
+.todo .todo__menu:focus-visible,
+.todo .todo__menu[data-state='open'] {
   opacity: 1;
   color: var(--color-text-secondary);
   background: var(--color-bg-surface-2);
