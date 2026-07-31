@@ -107,6 +107,8 @@ docker-compose.override.yml
 # --------------------------------------------------------------------------
 .gemini/
 .claude/skills/impeccable/
+# Agent-Worktrees: isolierte Arbeitskopien des Repos, nie selbst versionieren
+.claude/worktrees/
 
 # --------------------------------------------------------------------------
 # Editor / IDE
