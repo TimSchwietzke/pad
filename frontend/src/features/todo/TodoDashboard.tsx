@@ -21,6 +21,8 @@ import { formatDue, formatEstimate } from './format'
 import { bucketOf, openDueOn, startOfDay, triageStats } from './triage'
 import { groupHint, groupKeys, groupTodos } from './grouping'
 import type { Group, GroupKey } from './grouping'
+import { ShortcutsSheet } from './ShortcutsSheet'
+import { isBareKey, isTypingTarget } from './shortcuts'
 import {
   Search,
   Moon,
@@ -34,6 +36,7 @@ import {
   ListTodo as Check,
   Calendar as Cal,
   Settings as Gear,
+  Keyboard,
   Plus as PlusIcon,
   Rows2,
   AlignJustify,
@@ -151,6 +154,8 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   // The nav sidebar is fully collapsed by default; opening it slides an elevated panel in
   // and pushes the content over (persisted, like the Claude desktop sidebar).
   const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>('pad.sidebar.open', false)
+  // The keyboard help sheet ("?"), the one place that says what pad answers to.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [view, setView] = useState<View>('dashboard')
   const [sort, setSort] = useState<SortKey>('priority')
   // Optional secondary criterion: breaks ties in the primary sort (e.g. same
@@ -169,11 +174,25 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     root.dataset.mode = mode
   }, [preset, mode])
 
-  // Escape closes the nav sidebar. (Search — and its ⌘K jump-to — is not wired
-  // yet; the field shows a "coming soon" state rather than pretending to work.)
+  // App-level keys. Escape closes the nav sidebar, "b" toggles it, "?" opens the
+  // shortcuts sheet — all ignored while the user is typing or inside a menu, so
+  // they never fight a text field or Radix's own typeahead. (Search — and its ⌘K
+  // jump-to — is not wired yet; the field shows a "coming soon" state rather
+  // than pretending to work.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSidebarOpen(false)
+      if (e.key === 'Escape') {
+        setSidebarOpen(false)
+        return
+      }
+      if (!isBareKey(e) || isTypingTarget(e.target)) return
+      if (e.key === 'b') {
+        e.preventDefault()
+        setSidebarOpen((v) => !v)
+      } else if (e.key === '?') {
+        e.preventDefault()
+        setShortcutsOpen(true)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -539,6 +558,12 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
             </nav>
 
             <div className="sidebar__footer">
+              {/* the mouse path to the "?" sheet — a shortcut nobody can find is no shortcut */}
+              <button className="nav__item" type="button" onClick={() => setShortcutsOpen(true)}>
+                <span className="nav__icon"><Keyboard size={18} /></span>
+                <span className="nav__label">shortcuts</span>
+                <kbd className="kbd nav__kbd">?</kbd>
+              </button>
               <button
                 className={`nav__item${view === 'settings' ? ' is-active' : ''}`}
                 onClick={() => setView('settings')}
@@ -1003,6 +1028,8 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
           )}
         </main>
       </div>
+
+      <ShortcutsSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   )
 }
@@ -1517,6 +1544,8 @@ function CreateBar({
   // Tags picked for the task being drafted. They only exist client-side until
   // Enter creates the todo — the parent then attaches them to the new row.
   const [selTags, setSelTags] = useState<Tag[]>([])
+  // Set when Enter was pressed with an empty title — the one thing that can't be created.
+  const [needsTitle, setNeedsTitle] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -1527,19 +1556,17 @@ function CreateBar({
     setDue(null)
     setEffort(null)
     setSelTags([])
+    setNeedsTitle(false)
   }
   const close = () => {
     setOpen(false)
     reset()
   }
 
-  // "c" opens the create row, unless the user is already typing somewhere.
+  // "c" opens the create row, unless the keystroke belongs to a field or menu.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
-      if (typing) return
+      if (e.key !== 'c' || !isBareKey(e) || isTypingTarget(e.target)) return
       e.preventDefault()
       setOpen(true)
     }
@@ -1595,7 +1622,13 @@ function CreateBar({
         onSubmit={(e) => {
           e.preventDefault()
           const t = title.trim()
-          if (!t) return
+          // Enter on an empty title used to do nothing at all, which reads as a
+          // broken key. Say what's missing and keep the cursor where the fix is.
+          if (!t) {
+            setNeedsTitle(true)
+            inputRef.current?.focus()
+            return
+          }
           onCreate(
             { title: t, project_id: projectId, priority, status: 'open', due_at: due, estimate_minutes: effort },
             selTags.map((tag) => tag.id),
@@ -1609,13 +1642,21 @@ function CreateBar({
           <input
             ref={inputRef}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            aria-invalid={needsTitle || undefined}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              setNeedsTitle(false) // typing is the fix; drop the nag immediately
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') close()
             }}
             placeholder="what needs doing?"
             aria-label="new task title"
           />
+          {/* sits at the end of the row, so saying "no" never resizes the tile */}
+          <span className="create-tile__hint" role="status">
+            {needsTitle ? 'give it a title first' : ''}
+          </span>
         </div>
         <div className="create-tile__params">
           <ProjectField value={projectId} projects={projects} onChange={setProjectId} />
