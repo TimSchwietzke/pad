@@ -92,6 +92,66 @@ describe('TodoDashboard', () => {
     expect(await screen.findByLabelText('new task title')).toBeInTheDocument()
   })
 
+  it('says what is missing when Enter hits an empty title', async () => {
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(await screen.findByRole('button', { name: /create a task/i }))
+    await user.type(screen.getByLabelText('new task title'), '   {Enter}')
+
+    expect(await screen.findByText('give it a title first')).toBeInTheDocument()
+    // the editor stays open with the cursor where the fix is, nothing was created
+    expect(screen.getByLabelText('new task title')).toHaveFocus()
+    expect(screen.getByText("you're all caught up")).toBeInTheDocument()
+
+    // typing clears the complaint again
+    await user.keyboard('buy milk')
+    expect(screen.queryByText('give it a title first')).not.toBeInTheDocument()
+  })
+
+  it('opens the shortcuts sheet with "?" and closes it with escape', async () => {
+    const user = userEvent.setup()
+    await openTodos(user)
+    await screen.findByRole('button', { name: /create a task/i })
+
+    await user.keyboard('?')
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByText('keyboard shortcuts')).toBeInTheDocument()
+    expect(within(sheet).getByText('start a new task')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('opens the shortcuts sheet from the sidebar too', async () => {
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    await user.click(screen.getByRole('button', { name: /shortcuts/i }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('toggles the sidebar with "b", but not while typing', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByRole('button', { name: /create a task/i })
+    const app = container.querySelector('.app')!
+
+    expect(app).toHaveAttribute('data-sidebar', 'open')
+    await user.keyboard('b')
+    expect(app).toHaveAttribute('data-sidebar', 'closed')
+    await user.keyboard('b')
+    expect(app).toHaveAttribute('data-sidebar', 'open')
+
+    // inside a text field the same key is just a letter
+    await user.click(screen.getByRole('button', { name: /create a task/i }))
+    await user.type(screen.getByLabelText('new task title'), 'buy bread')
+    expect(app).toHaveAttribute('data-sidebar', 'open')
+    expect(screen.getByLabelText('new task title')).toHaveValue('buy bread')
+  })
+
   it('toggles a task between open and done', async () => {
     resetDb({ todos: [makeTodo({ id: 1, title: 'alpha' })] })
     const user = userEvent.setup()

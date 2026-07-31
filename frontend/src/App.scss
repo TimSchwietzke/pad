@@ -177,6 +177,11 @@ input {
 .nav__label {
   white-space: nowrap;
 }
+/* the key that does the same thing, parked at the end of the row */
+.nav__kbd {
+  margin-left: auto;
+  font-size: 0.72rem;
+}
 .nav__item:hover:not(:disabled) {
   background: var(--color-bg-surface-2);
   color: var(--color-text-primary);
@@ -264,14 +269,25 @@ textarea::placeholder {
   color: var(--color-text-placeholder);
   opacity: 1;
 }
-/* keyboard hint chip (⌘K / Ctrl K) at the trailing edge of the search field */
+/* key caps — one vocabulary wherever a key is named (search hint, create tile,
+   shortcuts sheet), so the same key never looks like two different things */
+.kbd,
+.search__kbd,
+.create-tile kbd {
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  background: var(--color-bg-surface-2);
+}
+/* the search field is already a filled pill — its hint lifts off it instead */
 .search__kbd {
   flex: none;
   font-size: 0.72rem;
   color: var(--color-text-placeholder);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
   background: var(--color-bg-surface);
 }
 .topbar__actions {
@@ -1272,14 +1288,13 @@ button.rail-proj__row:hover {
   color: var(--color-text-primary);
   font-size: 0.95rem;
 }
-.create-tile kbd {
-  font-family: inherit;
+
+/* refusal message for the one impossible case (no title) — quiet, at the end of
+   the row so the tile keeps its size */
+.create-tile__hint {
+  flex: none;
   font-size: 0.78rem;
-  padding: 1px 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-surface-2);
-  color: var(--color-text-secondary);
+  color: var(--color-danger);
 }
 
 /* ---------- sidebar footer (settings + account, pinned to the bottom) ------ */
@@ -1579,12 +1594,90 @@ button.rail-proj__row:hover {
   }
 }
 
+/* ---------- keyboard shortcuts sheet (the "?" reference) ------------------- */
+.shortcuts {
+  position: relative;
+  padding: var(--space-6);
+}
+.shortcuts__x {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--motion) var(--ease-out), color var(--motion) var(--ease-out);
+}
+.shortcuts__x:hover,
+.shortcuts__x:focus-visible {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+}
+.shortcuts__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.shortcuts__intro {
+  margin: 6px 0 0;
+  max-width: 52ch;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+/* generous above the heading, tight to the rows it introduces */
+.shortcuts__group {
+  margin-top: var(--space-6);
+}
+.shortcuts__section {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.shortcuts__list {
+  margin: 0;
+}
+/* fixed key column so the descriptions line up and the sheet reads as a table
+   without being one; it collapses to stacked rows on narrow screens */
+.shortcuts__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 5px 0;
+}
+.shortcuts__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.shortcuts__what {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+}
+@media (max-width: 420px) {
+  .shortcuts {
+    padding: var(--space-4);
+  }
+  .shortcuts__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 /* ---------- toasts (mutation failures surface here, bottom-right) ---------- */
 .toaster {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: var(--z-popover);
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
