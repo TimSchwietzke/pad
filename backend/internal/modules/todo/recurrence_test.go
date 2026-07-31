@@ -21,13 +21,13 @@ func TestNextDueCadences(t *testing.T) {
 		rule recurrenceRule
 		want time.Time
 	}{
-		{"daily", at(2026, time.March, 11), recurrenceRule{freqDaily, 1}, at(2026, time.March, 12)},
-		{"every 3 days", at(2026, time.March, 11), recurrenceRule{freqDaily, 3}, at(2026, time.March, 14)},
-		{"weekly", at(2026, time.March, 11), recurrenceRule{freqWeekly, 1}, at(2026, time.March, 18)},
-		{"fortnightly", at(2026, time.March, 11), recurrenceRule{freqWeekly, 2}, at(2026, time.March, 25)},
-		{"monthly", at(2026, time.March, 11), recurrenceRule{freqMonthly, 1}, at(2026, time.April, 11)},
-		{"quarterly", at(2026, time.March, 11), recurrenceRule{freqMonthly, 3}, at(2026, time.June, 11)},
-		{"yearly", at(2026, time.March, 11), recurrenceRule{freqYearly, 1}, at(2027, time.March, 11)},
+		{"daily", at(2026, time.March, 11), recurrenceRule{Freq: freqDaily, Interval: 1}, at(2026, time.March, 12)},
+		{"every 3 days", at(2026, time.March, 11), recurrenceRule{Freq: freqDaily, Interval: 3}, at(2026, time.March, 14)},
+		{"weekly", at(2026, time.March, 11), recurrenceRule{Freq: freqWeekly, Interval: 1}, at(2026, time.March, 18)},
+		{"fortnightly", at(2026, time.March, 11), recurrenceRule{Freq: freqWeekly, Interval: 2}, at(2026, time.March, 25)},
+		{"monthly", at(2026, time.March, 11), recurrenceRule{Freq: freqMonthly, Interval: 1}, at(2026, time.April, 11)},
+		{"quarterly", at(2026, time.March, 11), recurrenceRule{Freq: freqMonthly, Interval: 3}, at(2026, time.June, 11)},
+		{"yearly", at(2026, time.March, 11), recurrenceRule{Freq: freqYearly, Interval: 1}, at(2027, time.March, 11)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestNextDueCadences(t *testing.T) {
 // TestNextDueKeepsTimeOfDay makes sure an evening chore stays an evening chore.
 func TestNextDueKeepsTimeOfDay(t *testing.T) {
 	from := time.Date(2026, time.March, 11, 18, 30, 0, 0, time.UTC)
-	got := nextDue(from, recurrenceRule{freqWeekly, 1}, at(2026, time.March, 10))
+	got := nextDue(from, recurrenceRule{Freq: freqWeekly, Interval: 1}, at(2026, time.March, 10))
 	if got.Hour() != 18 || got.Minute() != 30 {
 		t.Fatalf("time of day lost: %s", got.Format(time.RFC3339))
 	}
@@ -56,10 +56,10 @@ func TestNextDueClampsShortMonths(t *testing.T) {
 		rule recurrenceRule
 		want time.Time
 	}{
-		{"31 jan + 1 month", at(2026, time.January, 31), recurrenceRule{freqMonthly, 1}, at(2026, time.February, 28)},
-		{"31 jan + 1 month, leap year", at(2028, time.January, 31), recurrenceRule{freqMonthly, 1}, at(2028, time.February, 29)},
-		{"31 mar + 1 month", at(2026, time.March, 31), recurrenceRule{freqMonthly, 1}, at(2026, time.April, 30)},
-		{"29 feb + 1 year", at(2028, time.February, 29), recurrenceRule{freqYearly, 1}, at(2029, time.February, 28)},
+		{"31 jan + 1 month", at(2026, time.January, 31), recurrenceRule{Freq: freqMonthly, Interval: 1}, at(2026, time.February, 28)},
+		{"31 jan + 1 month, leap year", at(2028, time.January, 31), recurrenceRule{Freq: freqMonthly, Interval: 1}, at(2028, time.February, 29)},
+		{"31 mar + 1 month", at(2026, time.March, 31), recurrenceRule{Freq: freqMonthly, Interval: 1}, at(2026, time.April, 30)},
+		{"29 feb + 1 year", at(2028, time.February, 29), recurrenceRule{Freq: freqYearly, Interval: 1}, at(2029, time.February, 28)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestNextDueCatchesUp(t *testing.T) {
 	now := at(2026, time.March, 10)
 
 	// weekly, last due five weeks ago -> the first friday after today
-	got := nextDue(at(2026, time.February, 3), recurrenceRule{freqWeekly, 1}, now)
+	got := nextDue(at(2026, time.February, 3), recurrenceRule{Freq: freqWeekly, Interval: 1}, now)
 	if !got.After(now) {
 		t.Fatalf("nextDue = %s, want a date after %s", got.Format(time.RFC3339), now.Format(time.RFC3339))
 	}
@@ -87,8 +87,63 @@ func TestNextDueCatchesUp(t *testing.T) {
 	}
 
 	// a deadline already in the future advances exactly once, no catch-up
-	if got := nextDue(at(2026, time.March, 20), recurrenceRule{freqWeekly, 1}, now); !got.Equal(at(2026, time.March, 27)) {
+	if got := nextDue(at(2026, time.March, 20), recurrenceRule{Freq: freqWeekly, Interval: 1}, now); !got.Equal(at(2026, time.March, 27)) {
 		t.Fatalf("future deadline advanced wrong: %s", got.Format(time.RFC3339))
+	}
+}
+
+// TestNextDueWeekdays walks a "every mon + thu" rule around the week, including
+// the wrap from the last selected day back to the first of the next week.
+func TestNextDueWeekdays(t *testing.T) {
+	// 2026: 2 mar is a monday, so the week runs mon 2 … sun 8 march
+	monThu := recurrenceRule{Freq: freqWeekly, Interval: 1, Weekdays: []int32{1, 4}}
+	early := at(2026, time.March, 1) // the sunday before, so nothing is "now"-blocked
+
+	cases := []struct {
+		name string
+		from time.Time
+		want time.Time
+	}{
+		{"monday to thursday", at(2026, time.March, 2), at(2026, time.March, 5)},
+		{"thursday wraps to next monday", at(2026, time.March, 5), at(2026, time.March, 9)},
+		{"a day in between picks the next selected one", at(2026, time.March, 3), at(2026, time.March, 5)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := nextDue(c.from, monThu, early); !got.Equal(c.want) {
+				t.Fatalf("nextDue = %s, want %s", got.Format(time.RFC3339), c.want.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
+// TestNextDueWeekdaysEveryOtherWeek pins the interval on top of the weekdays:
+// the weeks in between are skipped rather than the series drifting a day.
+func TestNextDueWeekdaysEveryOtherWeek(t *testing.T) {
+	rule := recurrenceRule{Freq: freqWeekly, Interval: 2, Weekdays: []int32{1, 4}}
+	early := at(2026, time.March, 1)
+
+	// mon 2 mar -> thu 5 mar (same week, still in the interval)
+	if got := nextDue(at(2026, time.March, 2), rule, early); !got.Equal(at(2026, time.March, 5)) {
+		t.Fatalf("same week: %s", got.Format(time.RFC3339))
+	}
+	// thu 5 mar -> mon 16 mar, skipping the week of 9 march entirely
+	if got := nextDue(at(2026, time.March, 5), rule, early); !got.Equal(at(2026, time.March, 16)) {
+		t.Fatalf("next interval week: %s, want 16 mar", got.Format(time.RFC3339))
+	}
+}
+
+// TestNextDueWeekdaysCatchUp: an ignored weekday rule also comes back in the
+// future rather than repeating an overdue date.
+func TestNextDueWeekdaysCatchUp(t *testing.T) {
+	rule := recurrenceRule{Freq: freqWeekly, Interval: 1, Weekdays: []int32{1, 4}}
+	now := at(2026, time.March, 10) // a tuesday
+	got := nextDue(at(2026, time.February, 2), rule, now)
+	if !got.After(now) {
+		t.Fatalf("nextDue = %s, want a date after %s", got.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+	if want := at(2026, time.March, 12); !got.Equal(want) { // the thursday after
+		t.Fatalf("nextDue = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
 
@@ -96,7 +151,12 @@ func TestNextDueCatchesUp(t *testing.T) {
 // to 1 and rejects everything else.
 func TestRecurrenceValidation(t *testing.T) {
 	valid := []recurrenceRule{
-		{freqDaily, 1}, {freqWeekly, 2}, {freqMonthly, 6}, {freqYearly, 1},
+		{Freq: freqDaily, Interval: 1},
+		{Freq: freqWeekly, Interval: 2},
+		{Freq: freqMonthly, Interval: 6},
+		{Freq: freqYearly, Interval: 1},
+		// a weekly rule pinned to weekdays
+		{Freq: freqWeekly, Interval: 1, Weekdays: []int32{1, 4}},
 	}
 	for _, r := range valid {
 		if err := r.validate(); err != nil {
@@ -110,8 +170,18 @@ func TestRecurrenceValidation(t *testing.T) {
 		t.Errorf("missing interval: err=%v interval=%d, want nil/1", err, r.Interval)
 	}
 
+	three := int32(3)
+	past := time.Now()
 	invalid := []recurrenceRule{
-		{"hourly", 1}, {"", 1}, {freqDaily, -2},
+		{Freq: "hourly", Interval: 1},
+		{Freq: "", Interval: 1},
+		{Freq: freqDaily, Interval: -2},
+		// weekdays only make sense for a weekly cadence
+		{Freq: freqMonthly, Interval: 1, Weekdays: []int32{1}},
+		{Freq: freqWeekly, Interval: 1, Weekdays: []int32{0}},
+		{Freq: freqWeekly, Interval: 1, Weekdays: []int32{8}},
+		// an end date and a countdown are mutually exclusive
+		{Freq: freqWeekly, Interval: 1, Until: &past, Count: &three},
 	}
 	for _, r := range invalid {
 		if err := r.validate(); err == nil {

@@ -20,13 +20,35 @@ const freqNoun: Record<Recurrence['freq'], string> = {
   yearly: 'years',
 }
 
+/** Short weekday names, indexed by ISO weekday (1 = monday). */
+export const weekdayShort: Record<number, string> = {
+  1: 'mon',
+  2: 'tue',
+  3: 'wed',
+  4: 'thu',
+  5: 'fri',
+  6: 'sat',
+  7: 'sun',
+}
+
+/** All ISO weekdays in display order — monday first, the way a week is read here. */
+export const weekdayOrder = [1, 2, 3, 4, 5, 6, 7]
+
 /**
  * Formats a repeat rule the way people say it: "daily", "weekly", and
  * "every 2 weeks" once the interval stops being 1. "every 2 weeks" reads better
  * than "fortnightly", which not everyone parses at a glance.
+ *
+ * A rule pinned to weekdays names them instead — "mon, thu" says more than
+ * "weekly" does, and the interval is only added when it isn't every week.
  */
 export function formatRecurrence(r: Recurrence | null): string | null {
   if (!r) return null
+  const days = r.weekdays ?? []
+  if (r.freq === 'weekly' && days.length > 0) {
+    const named = [...days].sort((a, b) => a - b).map((d) => weekdayShort[d]).join(', ')
+    return r.interval <= 1 ? named : `every ${r.interval} weeks · ${named}`
+  }
   if (r.interval <= 1) return r.freq
   return `every ${r.interval} ${freqNoun[r.freq]}`
 }

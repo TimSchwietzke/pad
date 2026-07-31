@@ -10,6 +10,24 @@ import (
 	"database/sql"
 )
 
+const addRecurrenceDay = `-- name: AddRecurrenceDay :exec
+
+INSERT INTO todo_recurrence_days (todo_id, weekday)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddRecurrenceDayParams struct {
+	TodoID  int64 `json:"todo_id"`
+	Weekday int16 `json:"weekday"`
+}
+
+// Recurrence weekdays ------------------------------------------------------
+func (q *Queries) AddRecurrenceDay(ctx context.Context, arg AddRecurrenceDayParams) error {
+	_, err := q.db.ExecContext(ctx, addRecurrenceDay, arg.TodoID, arg.Weekday)
+	return err
+}
+
 const addTagToTodo = `-- name: AddTagToTodo :exec
 INSERT INTO todo_tag_map (todo_id, tag_id)
 VALUES ($1, $2)
@@ -23,6 +41,32 @@ type AddTagToTodoParams struct {
 
 func (q *Queries) AddTagToTodo(ctx context.Context, arg AddTagToTodoParams) error {
 	_, err := q.db.ExecContext(ctx, addTagToTodo, arg.TodoID, arg.TagID)
+	return err
+}
+
+const clearRecurrenceDays = `-- name: ClearRecurrenceDays :exec
+DELETE FROM todo_recurrence_days WHERE todo_id = $1
+`
+
+func (q *Queries) ClearRecurrenceDays(ctx context.Context, todoID int64) error {
+	_, err := q.db.ExecContext(ctx, clearRecurrenceDays, todoID)
+	return err
+}
+
+const copyRecurrenceDays = `-- name: CopyRecurrenceDays :exec
+INSERT INTO todo_recurrence_days (todo_id, weekday)
+SELECT $1, d.weekday FROM todo_recurrence_days d WHERE d.todo_id = $2
+ON CONFLICT DO NOTHING
+`
+
+type CopyRecurrenceDaysParams struct {
+	DstTodoID int64 `json:"dst_todo_id"`
+	SrcTodoID int64 `json:"src_todo_id"`
+}
+
+// Carries the weekday rule over to a spawned occurrence.
+func (q *Queries) CopyRecurrenceDays(ctx context.Context, arg CopyRecurrenceDaysParams) error {
+	_, err := q.db.ExecContext(ctx, copyRecurrenceDays, arg.DstTodoID, arg.SrcTodoID)
 	return err
 }
 
@@ -95,24 +139,27 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (TodoTag, 
 const createTodo = `-- name: CreateTodo :one
 
 INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes,
-                   recurrence_freq, recurrence_interval, spawned_from_id, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                   recurrence_freq, recurrence_interval, recurrence_until, recurrence_remaining,
+                   spawned_from_id, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
         COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id, recurrence_until, recurrence_remaining
 `
 
 type CreateTodoParams struct {
-	UserID             int64          `json:"user_id"`
-	ProjectID          sql.NullInt64  `json:"project_id"`
-	Title              string         `json:"title"`
-	Notes              string         `json:"notes"`
-	Priority           int32          `json:"priority"`
-	Status             string         `json:"status"`
-	DueAt              sql.NullTime   `json:"due_at"`
-	EstimateMinutes    sql.NullInt32  `json:"estimate_minutes"`
-	RecurrenceFreq     sql.NullString `json:"recurrence_freq"`
-	RecurrenceInterval int32          `json:"recurrence_interval"`
-	SpawnedFromID      sql.NullInt64  `json:"spawned_from_id"`
+	UserID              int64          `json:"user_id"`
+	ProjectID           sql.NullInt64  `json:"project_id"`
+	Title               string         `json:"title"`
+	Notes               string         `json:"notes"`
+	Priority            int32          `json:"priority"`
+	Status              string         `json:"status"`
+	DueAt               sql.NullTime   `json:"due_at"`
+	EstimateMinutes     sql.NullInt32  `json:"estimate_minutes"`
+	RecurrenceFreq      sql.NullString `json:"recurrence_freq"`
+	RecurrenceInterval  int32          `json:"recurrence_interval"`
+	RecurrenceUntil     sql.NullTime   `json:"recurrence_until"`
+	RecurrenceRemaining sql.NullInt32  `json:"recurrence_remaining"`
+	SpawnedFromID       sql.NullInt64  `json:"spawned_from_id"`
 }
 
 // Todos --------------------------------------------------------------------
@@ -129,6 +176,8 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		arg.EstimateMinutes,
 		arg.RecurrenceFreq,
 		arg.RecurrenceInterval,
+		arg.RecurrenceUntil,
+		arg.RecurrenceRemaining,
 		arg.SpawnedFromID,
 	)
 	var i Todo
@@ -148,6 +197,8 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		&i.RecurrenceFreq,
 		&i.RecurrenceInterval,
 		&i.SpawnedFromID,
+		&i.RecurrenceUntil,
+		&i.RecurrenceRemaining,
 	)
 	return i, err
 }
@@ -222,7 +273,7 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (TodoPro
 }
 
 const getSpawnedTodo = `-- name: GetSpawnedTodo :one
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id FROM todos
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id, recurrence_until, recurrence_remaining FROM todos
 WHERE spawned_from_id = $1 AND user_id = $2
 ORDER BY id DESC
 LIMIT 1
@@ -254,6 +305,8 @@ func (q *Queries) GetSpawnedTodo(ctx context.Context, arg GetSpawnedTodoParams) 
 		&i.RecurrenceFreq,
 		&i.RecurrenceInterval,
 		&i.SpawnedFromID,
+		&i.RecurrenceUntil,
+		&i.RecurrenceRemaining,
 	)
 	return i, err
 }
@@ -276,7 +329,7 @@ func (q *Queries) GetTag(ctx context.Context, arg GetTagParams) (TodoTag, error)
 }
 
 const getTodo = `-- name: GetTodo :one
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id FROM todos
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id, recurrence_until, recurrence_remaining FROM todos
 WHERE id = $1 AND user_id = $2
 `
 
@@ -304,6 +357,8 @@ func (q *Queries) GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error) 
 		&i.RecurrenceFreq,
 		&i.RecurrenceInterval,
 		&i.SpawnedFromID,
+		&i.RecurrenceUntil,
+		&i.RecurrenceRemaining,
 	)
 	return i, err
 }
@@ -331,6 +386,68 @@ func (q *Queries) ListProjects(ctx context.Context, userID int64) ([]TodoProject
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecurrenceDaysForTodo = `-- name: ListRecurrenceDaysForTodo :many
+SELECT weekday FROM todo_recurrence_days
+WHERE todo_id = $1
+ORDER BY weekday
+`
+
+func (q *Queries) ListRecurrenceDaysForTodo(ctx context.Context, todoID int64) ([]int16, error) {
+	rows, err := q.db.QueryContext(ctx, listRecurrenceDaysForTodo, todoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int16{}
+	for rows.Next() {
+		var weekday int16
+		if err := rows.Scan(&weekday); err != nil {
+			return nil, err
+		}
+		items = append(items, weekday)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecurrenceDaysForUserTodos = `-- name: ListRecurrenceDaysForUserTodos :many
+SELECT d.todo_id, d.weekday FROM todo_recurrence_days d
+JOIN todos t ON t.id = d.todo_id
+WHERE t.user_id = $1
+ORDER BY d.todo_id, d.weekday
+`
+
+// Every (todo, weekday) pair for the user, so the list endpoint can embed the
+// weekday rules in one round-trip instead of a query per row — the same shape
+// ListTagsForUserTodos uses.
+func (q *Queries) ListRecurrenceDaysForUserTodos(ctx context.Context, userID int64) ([]TodoRecurrenceDay, error) {
+	rows, err := q.db.QueryContext(ctx, listRecurrenceDaysForUserTodos, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TodoRecurrenceDay{}
+	for rows.Next() {
+		var i TodoRecurrenceDay
+		if err := rows.Scan(&i.TodoID, &i.Weekday); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -477,6 +594,31 @@ func (q *Queries) SetTodoPosition(ctx context.Context, arg SetTodoPositionParams
 	return result.RowsAffected()
 }
 
+const setTodoRecurrenceEnd = `-- name: SetTodoRecurrenceEnd :exec
+UPDATE todos
+SET recurrence_until = $1, recurrence_remaining = $2, updated_at = now()
+WHERE id = $3 AND user_id = $4
+`
+
+type SetTodoRecurrenceEndParams struct {
+	RecurrenceUntil     sql.NullTime  `json:"recurrence_until"`
+	RecurrenceRemaining sql.NullInt32 `json:"recurrence_remaining"`
+	ID                  int64         `json:"id"`
+	UserID              int64         `json:"user_id"`
+}
+
+// The two end-of-series columns move separately from the rest of the update, so
+// the handler can leave them alone when a request doesn't carry a rule at all.
+func (q *Queries) SetTodoRecurrenceEnd(ctx context.Context, arg SetTodoRecurrenceEndParams) error {
+	_, err := q.db.ExecContext(ctx, setTodoRecurrenceEnd,
+		arg.RecurrenceUntil,
+		arg.RecurrenceRemaining,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE todo_projects
 SET name = $1, color = $2, updated_at = now()
@@ -516,7 +658,7 @@ UPDATE todos
 SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7,
     recurrence_freq = $8, recurrence_interval = $9, updated_at = now()
 WHERE id = $10 AND user_id = $11
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id, recurrence_until, recurrence_remaining
 `
 
 type UpdateTodoParams struct {
@@ -566,6 +708,8 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		&i.RecurrenceFreq,
 		&i.RecurrenceInterval,
 		&i.SpawnedFromID,
+		&i.RecurrenceUntil,
+		&i.RecurrenceRemaining,
 	)
 	return i, err
 }

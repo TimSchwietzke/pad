@@ -61,13 +61,19 @@ func toTodoResponse(t db.Todo) todoResponse {
 	}
 }
 
-// rulePtr rebuilds the recurrence rule from its two columns; a todo without a
-// cadence has none (null in JSON), and the interval alone means nothing.
+// rulePtr rebuilds the recurrence rule from its columns; a todo without a
+// cadence has none (null in JSON), and the interval alone means nothing. The
+// weekdays live in their own table and are filled in by the caller.
 func rulePtr(t db.Todo) *recurrenceRule {
 	if !t.RecurrenceFreq.Valid {
 		return nil
 	}
-	return &recurrenceRule{Freq: t.RecurrenceFreq.String, Interval: t.RecurrenceInterval}
+	return &recurrenceRule{
+		Freq:     t.RecurrenceFreq.String,
+		Interval: t.RecurrenceInterval,
+		Until:    timePtr(t.RecurrenceUntil),
+		Count:    int32Ptr(t.RecurrenceRemaining),
+	}
 }
 
 // todoRequest is the create/update payload. Pointer fields are optional.
@@ -126,6 +132,28 @@ func (b *todoRequest) interval() int32 {
 	return b.Recurrence.Interval
 }
 
+func (b *todoRequest) until() sql.NullTime {
+	if b.Recurrence == nil {
+		return sql.NullTime{}
+	}
+	return nullTime(b.Recurrence.Until)
+}
+
+func (b *todoRequest) count() sql.NullInt32 {
+	if b.Recurrence == nil {
+		return sql.NullInt32{}
+	}
+	return nullInt32(b.Recurrence.Count)
+}
+
+// weekdays is always a slice (never nil), so a cleared rule writes an empty set.
+func (b *todoRequest) weekdays() []int32 {
+	if b.Recurrence == nil {
+		return nil
+	}
+	return b.Recurrence.Weekdays
+}
+
 // ensureProjectOwned rejects a todo that points at a project the user doesn't
 // own. The foreign key alone would happily reference another user's project, so
 // we check ownership explicitly. A nil projectID means "no project" and passes.
@@ -151,7 +179,8 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position, ` +
-		`recurrence_freq, recurrence_interval, spawned_from_id, created_at, updated_at`
+		`recurrence_freq, recurrence_interval, recurrence_until, recurrence_remaining, spawned_from_id, ` +
+		`created_at, updated_at`
 	query := `SELECT ` + cols + ` FROM todos WHERE user_id = $1 ORDER BY ` + orderClause(terms)
 
 	rows, err := m.db.QueryContext(r.Context(), query, userID(r))
@@ -167,7 +196,8 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(
 			&t.ID, &t.UserID, &t.ProjectID, &t.Title, &t.Notes, &t.Priority,
 			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.Position,
-			&t.RecurrenceFreq, &t.RecurrenceInterval, &t.SpawnedFromID, &t.CreatedAt, &t.UpdatedAt,
+			&t.RecurrenceFreq, &t.RecurrenceInterval, &t.RecurrenceUntil, &t.RecurrenceRemaining,
+			&t.SpawnedFromID, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
 			httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
 			return
@@ -196,6 +226,23 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Same idea for the weekday rules: they live in their own table (the schema
+	// stays normalized), so one aggregate query fills them all in.
+	dayRows, err := m.q.ListRecurrenceDaysForUserTodos(r.Context(), userID(r))
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read recurrence days")
+		return
+	}
+	daysByTodo := make(map[int64][]int32, len(dayRows))
+	for _, dr := range dayRows {
+		daysByTodo[dr.TodoID] = append(daysByTodo[dr.TodoID], int32(dr.Weekday))
+	}
+	for i := range out {
+		if out[i].Recurrence != nil {
+			out[i].Recurrence.Weekdays = daysByTodo[out[i].ID]
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, out)
 }
 
@@ -216,17 +263,29 @@ func (m *Module) createTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, err := m.q.CreateTodo(r.Context(), db.CreateTodoParams{
-		UserID:             uid,
-		ProjectID:          nullInt64(body.ProjectID),
-		Title:              body.Title,
-		Notes:              body.Notes,
-		Priority:           body.Priority,
-		Status:             body.Status,
-		DueAt:              nullTime(body.DueAt),
-		EstimateMinutes:    nullInt32(body.EstimateMinutes),
-		RecurrenceFreq:     body.nullFreq(),
-		RecurrenceInterval: body.interval(),
+	// The todo and its weekday rows are one change — a rule half-written would
+	// repeat on the wrong days.
+	tx, err := m.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
+		return
+	}
+	defer tx.Rollback() // no-op once committed
+	qtx := m.q.WithTx(tx)
+
+	t, err := qtx.CreateTodo(r.Context(), db.CreateTodoParams{
+		UserID:              uid,
+		ProjectID:           nullInt64(body.ProjectID),
+		Title:               body.Title,
+		Notes:               body.Notes,
+		Priority:            body.Priority,
+		Status:              body.Status,
+		DueAt:               nullTime(body.DueAt),
+		EstimateMinutes:     nullInt32(body.EstimateMinutes),
+		RecurrenceFreq:      body.nullFreq(),
+		RecurrenceInterval:  body.interval(),
+		RecurrenceUntil:     body.until(),
+		RecurrenceRemaining: body.count(),
 		// Only the recurrence machinery links occurrences; the API never does.
 		SpawnedFromID: sql.NullInt64{},
 	})
@@ -234,7 +293,52 @@ func (m *Module) createTodo(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
 		return
 	}
-	httputil.JSON(w, http.StatusCreated, toTodoResponse(t))
+	if err := writeRecurrenceDays(r.Context(), qtx, t.ID, body.weekdays()); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
+		return
+	}
+
+	out := toTodoResponse(t)
+	if out.Recurrence != nil {
+		out.Recurrence.Weekdays = body.weekdays()
+	}
+	httputil.JSON(w, http.StatusCreated, out)
+}
+
+// writeRecurrenceDays replaces a todo's weekday rows. Clearing first keeps the
+// table honest when days are removed — the set is small, so a rewrite is simpler
+// (and easier to reason about) than diffing.
+func writeRecurrenceDays(ctx context.Context, q *db.Queries, todoID int64, days []int32) error {
+	if err := q.ClearRecurrenceDays(ctx, todoID); err != nil {
+		return err
+	}
+	for _, d := range days {
+		// the column is SMALLINT — the API speaks int32, the table int16
+		if err := q.AddRecurrenceDay(ctx, db.AddRecurrenceDayParams{TodoID: todoID, Weekday: int16(d)}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// attachWeekdays fills a single todo's rule with its weekday rows.
+func (m *Module) attachWeekdays(ctx context.Context, out *todoResponse) error {
+	if out.Recurrence == nil {
+		return nil
+	}
+	days, err := m.q.ListRecurrenceDaysForTodo(ctx, out.ID)
+	if err != nil {
+		return err
+	}
+	out.Recurrence.Weekdays = make([]int32, len(days))
+	for i, d := range days {
+		out.Recurrence.Weekdays[i] = int32(d)
+	}
+	return nil
 }
 
 // getTodo returns a single todo, or 404 if it isn't the user's.
@@ -252,7 +356,12 @@ func (m *Module) getTodo(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not load todo")
 		return
 	}
-	httputil.JSON(w, http.StatusOK, toTodoResponse(t))
+	out := toTodoResponse(t)
+	if err := m.attachWeekdays(r.Context(), &out); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not load todo")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 // updateTodo replaces the editable fields of a todo the user owns.
@@ -320,9 +429,27 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The end-of-series columns aren't part of UpdateTodo (they move on their own
+	// when an occurrence is spawned), so they're written separately here.
+	if err := qtx.SetTodoRecurrenceEnd(r.Context(), db.SetTodoRecurrenceEndParams{
+		RecurrenceUntil:     body.until(),
+		RecurrenceRemaining: body.count(),
+		ID:                  id,
+		UserID:              uid,
+	}); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
+		return
+	}
+	t.RecurrenceUntil, t.RecurrenceRemaining = body.until(), body.count()
+
+	if err := writeRecurrenceDays(r.Context(), qtx, id, body.weekdays()); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
+		return
+	}
+
 	switch {
 	case before.Status == statusOpen && t.Status == statusDone && t.RecurrenceFreq.Valid:
-		err = spawnNextOccurrence(r.Context(), qtx, t, time.Now())
+		err = spawnNextOccurrence(r.Context(), qtx, t, body.weekdays(), time.Now())
 	case before.Status == statusDone && t.Status == statusOpen:
 		// undo — take back the successor this occurrence created
 		err = dropSpawnedOccurrence(r.Context(), qtx, t.ID, uid)
@@ -336,7 +463,11 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
 		return
 	}
-	httputil.JSON(w, http.StatusOK, toTodoResponse(t))
+	out := toTodoResponse(t)
+	if out.Recurrence != nil {
+		out.Recurrence.Weekdays = body.weekdays()
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 // spawnNextOccurrence creates the follow-up for a recurring todo that was just
@@ -347,27 +478,53 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 //
 // A task without a deadline repeats relative to the moment it was finished,
 // which is the only meaningful anchor it has.
-func spawnNextOccurrence(ctx context.Context, q *db.Queries, done db.Todo, now time.Time) error {
-	rule := recurrenceRule{Freq: done.RecurrenceFreq.String, Interval: done.RecurrenceInterval}
+// A series can also end: on a date (`recurrence_until`) or after a number of
+// further occurrences (`recurrence_remaining`, counted down on every spawn).
+// When it ends, completing the task is simply the end of it.
+func spawnNextOccurrence(ctx context.Context, q *db.Queries, done db.Todo, weekdays []int32, now time.Time) error {
+	rule := recurrenceRule{
+		Freq:     done.RecurrenceFreq.String,
+		Interval: done.RecurrenceInterval,
+		Weekdays: weekdays,
+	}
 	base := now
 	if done.DueAt.Valid {
 		base = done.DueAt.Time
 	}
+	due := nextDue(base, rule, now)
+
+	// "no occurrences left" and "past the end date" both mean this was the last one
+	if done.RecurrenceRemaining.Valid && done.RecurrenceRemaining.Int32 <= 0 {
+		return nil
+	}
+	if done.RecurrenceUntil.Valid && due.After(done.RecurrenceUntil.Time) {
+		return nil
+	}
+
+	remaining := done.RecurrenceRemaining
+	if remaining.Valid {
+		remaining.Int32--
+	}
 
 	next, err := q.CreateTodo(ctx, db.CreateTodoParams{
-		UserID:             done.UserID,
-		ProjectID:          done.ProjectID,
-		Title:              done.Title,
-		Notes:              done.Notes,
-		Priority:           done.Priority,
-		Status:             statusOpen,
-		DueAt:              sql.NullTime{Time: nextDue(base, rule, now), Valid: true},
-		EstimateMinutes:    done.EstimateMinutes,
-		RecurrenceFreq:     done.RecurrenceFreq,
-		RecurrenceInterval: done.RecurrenceInterval,
-		SpawnedFromID:      sql.NullInt64{Int64: done.ID, Valid: true},
+		UserID:              done.UserID,
+		ProjectID:           done.ProjectID,
+		Title:               done.Title,
+		Notes:               done.Notes,
+		Priority:            done.Priority,
+		Status:              statusOpen,
+		DueAt:               sql.NullTime{Time: due, Valid: true},
+		EstimateMinutes:     done.EstimateMinutes,
+		RecurrenceFreq:      done.RecurrenceFreq,
+		RecurrenceInterval:  done.RecurrenceInterval,
+		RecurrenceUntil:     done.RecurrenceUntil,
+		RecurrenceRemaining: remaining,
+		SpawnedFromID:       sql.NullInt64{Int64: done.ID, Valid: true},
 	})
 	if err != nil {
+		return err
+	}
+	if err := q.CopyRecurrenceDays(ctx, db.CopyRecurrenceDaysParams{SrcTodoID: done.ID, DstTodoID: next.ID}); err != nil {
 		return err
 	}
 	return q.CopyTodoTags(ctx, db.CopyTodoTagsParams{SrcTodoID: done.ID, DstTodoID: next.ID})

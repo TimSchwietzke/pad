@@ -838,6 +838,80 @@ describe('TodoDashboard', () => {
     expect(within(row).getByRole('button', { name: 'repeat: monthly' })).toBeInTheDocument()
   })
 
+  it('pins a weekly rule to weekdays and names them on the chip', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'gym' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('gym')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set repeat' }))
+
+    // the menu stays open, so both days are picked in one visit
+    await user.click(await screen.findByRole('button', { name: 'mon' }))
+    await user.click(screen.getByRole('button', { name: 'thu' }))
+    await user.keyboard('{Escape}')
+
+    expect(await within(row).findByRole('button', { name: 'repeat: mon, thu' })).toBeInTheDocument()
+  })
+
+  it('drops a weekday again on a second click', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'gym', recurrence: { freq: 'weekly', interval: 1, weekdays: [1, 4] } })],
+    })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('gym')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'repeat: mon, thu' }))
+    await user.click(await screen.findByRole('button', { name: 'mon' }))
+    await user.keyboard('{Escape}')
+
+    expect(await within(row).findByRole('button', { name: 'repeat: thu' })).toBeInTheDocument()
+  })
+
+  it('ends a series after a number of occurrences', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'physio', recurrence: { freq: 'daily', interval: 1 } })],
+    })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('physio')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'repeat: daily' }))
+    await user.click(await screen.findByRole('button', { name: 'after n' }))
+
+    // "after n" seeds a sensible default rather than an empty field
+    const field = await screen.findByLabelText('remaining occurrences')
+    expect(field).toHaveValue(5)
+    await user.clear(field)
+    await user.type(field, '2')
+
+    // reopening shows the stored countdown, so the choice really persisted
+    await user.keyboard('{Escape}')
+    await user.click(await within(row).findByRole('button', { name: 'repeat: daily' }))
+    expect(await screen.findByLabelText('remaining occurrences')).toHaveValue(2)
+  })
+
+  it('stops spawning once the countdown is spent', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'physio', recurrence: { freq: 'daily', interval: 1, count: 1 } })],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard doneGraceMs={50} />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('physio')
+
+    // one occurrence left: completing spawns the last one …
+    await user.click(screen.getByRole('checkbox', { name: /mark done/i }))
+    await waitFor(() => expect(container.querySelectorAll('.todo')).toHaveLength(1), { timeout: 3000 })
+
+    // … and completing that one ends the series
+    await user.click(screen.getByRole('checkbox', { name: /mark done/i }))
+    await waitFor(() => expect(container.querySelectorAll('.todo')).toHaveLength(0), { timeout: 3000 })
+    expect(await screen.findByText("you're all caught up")).toBeInTheDocument()
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>

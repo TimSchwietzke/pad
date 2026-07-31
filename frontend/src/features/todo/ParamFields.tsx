@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Priority, Project, Recurrence, RecurrenceFreq, Tag } from './types'
-import { formatDue, formatEstimate, formatRecurrence, priorityLabel } from './format'
+import { formatDue, formatEstimate, formatRecurrence, priorityLabel, weekdayOrder, weekdayShort } from './format'
 
 // field icons — lucide, sized down for the small chips
 const Folder = () => <FolderIcon size={14} />
@@ -312,15 +312,35 @@ export function RepeatField({ value, onChange }: { value: Recurrence | null; onC
   const [open, setOpen] = useState(false)
   const [count, setCount] = useState('')
   const [unit, setUnit] = useState<RecurrenceFreq>('weekly')
-  const same = (a: Recurrence, b: Recurrence | null) => !!b && a.freq === b.freq && a.interval === b.interval
+  const days = value?.weekdays ?? []
+  const same = (a: Recurrence, b: Recurrence | null) =>
+    !!b && a.freq === b.freq && a.interval === b.interval && (b.weekdays ?? []).length === 0
   const pick = (v: Recurrence | null) => {
     onChange(v)
     setOpen(false)
   }
   const applyCustom = () => {
     const n = Number(count)
-    if (Number.isFinite(n) && n >= 1) pick({ freq: unit, interval: Math.round(n) })
+    if (Number.isFinite(n) && n >= 1) pick({ ...(value ?? {}), freq: unit, interval: Math.round(n), weekdays: unit === 'weekly' ? days : [] })
   }
+
+  /**
+   * Toggling a weekday keeps the menu open — picking "mon + thu" is one thought,
+   * not two visits. A rule pinned to days is weekly by definition, so the first
+   * day also switches the cadence over.
+   */
+  const toggleDay = (d: number) => {
+    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b)
+    const base: Recurrence = value ?? { freq: 'weekly', interval: 1 }
+    onChange({ ...base, freq: 'weekly', weekdays: next })
+  }
+
+  /** Series end: never / on a date / after n more occurrences — mutually exclusive. */
+  const setEnd = (patch: Pick<Recurrence, 'until' | 'count'>) => {
+    if (!value) return
+    onChange({ ...value, until: null, count: null, ...patch })
+  }
+  const endMode = value?.until != null ? 'date' : value?.count != null ? 'count' : 'never'
   return (
     <Popover
       open={open}
@@ -347,6 +367,26 @@ export function RepeatField({ value, onChange }: { value: Recurrence | null; onC
             <span className="menu-item__muted">doesn’t repeat</span>
           </MenuItem>
         )}
+
+        {/* weekday rule — picking days is what makes a weekly cadence concrete */}
+        <div className="menu-section">
+          <span className="menu-section__label">on these days</span>
+          <div className="day-row">
+            {weekdayOrder.map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`day${days.includes(d) ? ' is-on' : ''}`}
+                aria-pressed={days.includes(d)}
+                aria-label={weekdayShort[d]}
+                onClick={() => toggleDay(d)}
+              >
+                {weekdayShort[d].slice(0, 2)}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="menu-input">
           <span className="menu-input__prefix">every</span>
           <input
@@ -375,9 +415,76 @@ export function RepeatField({ value, onChange }: { value: Recurrence | null; onC
             set
           </button>
         </div>
+
+        {/* where the series stops — only worth showing once there is a series */}
+        {value != null && (
+          <div className="menu-section">
+            <span className="menu-section__label">ends</span>
+            <div className="day-row">
+              <button
+                type="button"
+                className={`day day--wide${endMode === 'never' ? ' is-on' : ''}`}
+                aria-pressed={endMode === 'never'}
+                onClick={() => setEnd({ until: null, count: null })}
+              >
+                never
+              </button>
+              <button
+                type="button"
+                className={`day day--wide${endMode === 'date' ? ' is-on' : ''}`}
+                aria-pressed={endMode === 'date'}
+                onClick={() => setEnd({ until: defaultEndDate() })}
+              >
+                on date
+              </button>
+              <button
+                type="button"
+                className={`day day--wide${endMode === 'count' ? ' is-on' : ''}`}
+                aria-pressed={endMode === 'count'}
+                onClick={() => setEnd({ count: 5 })}
+              >
+                after n
+              </button>
+            </div>
+            {endMode === 'date' && (
+              <input
+                type="date"
+                className="menu-section__input"
+                aria-label="repeat until"
+                value={value.until ? toDateInput(value.until) : ''}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) return setEnd({ until: null, count: null })
+                  const [y, m, d] = v.split('-').map(Number)
+                  setEnd({ until: new Date(y, m - 1, d).toISOString() })
+                }}
+              />
+            )}
+            {endMode === 'count' && (
+              <input
+                type="number"
+                min={1}
+                className="menu-section__input"
+                aria-label="remaining occurrences"
+                value={value.count ?? ''}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setEnd({ count: Number.isFinite(n) && n >= 0 ? Math.round(n) : null })
+                }}
+              />
+            )}
+          </div>
+        )}
       </FieldMenu>
     </Popover>
   )
+}
+
+/** A sensible first end date when the user picks "on date": three months out. */
+function defaultEndDate(): string {
+  const d = new Date()
+  d.setMonth(d.getMonth() + 3)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()
 }
 
 // Unit names for the "every N …" select — the noun, not the adverb.

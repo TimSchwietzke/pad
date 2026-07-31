@@ -2,6 +2,7 @@ package todo
 
 import (
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -24,14 +25,28 @@ const (
 // last date we reached, which the user can then correct by hand.
 const maxAdvanceSteps = 1000
 
-// recurrenceRule is the repeat cadence of a todo: every `Interval` units of `Freq`.
+// maxAdvanceDays caps the day-by-day walk a weekday rule does. ~8 years, which
+// only a very long-abandoned task could exhaust.
+const maxAdvanceDays = 3000
+
+// recurrenceRule is the repeat cadence of a todo: every `Interval` units of
+// `Freq`, optionally pinned to specific weekdays and optionally ending.
 type recurrenceRule struct {
 	Freq     string `json:"freq"`
 	Interval int32  `json:"interval"`
+	// Weekdays pins a weekly rule to given days (ISO: 1 = monday … 7 = sunday),
+	// so "every mon + thu" is one rule rather than two tasks. Empty means the
+	// deadline's own weekday carries the series. Stored in todo_recurrence_days.
+	Weekdays []int32 `json:"weekdays,omitempty"`
+	// Until ends the series on a date; Count ends it after that many more
+	// occurrences. They are mutually exclusive, and both nil means "forever".
+	Until *time.Time `json:"until,omitempty"`
+	Count *int32     `json:"count,omitempty"`
 }
 
 // validate rejects an unknown cadence or a non-positive interval. An interval of
-// 0 is read as "not given" and becomes 1, so `{"freq":"weekly"}` just works.
+// 0 is read as "not given" and becomes 1, so `{"freq":"weekly"}` just works. It
+// also sorts and de-duplicates the weekdays, so the stored rule is canonical.
 func (r *recurrenceRule) validate() error {
 	switch r.Freq {
 	case freqDaily, freqWeekly, freqMonthly, freqYearly:
@@ -44,7 +59,47 @@ func (r *recurrenceRule) validate() error {
 	if r.Interval < 1 {
 		return errors.New("recurrence.interval must be >= 1")
 	}
+
+	if len(r.Weekdays) > 0 {
+		// Weekdays only mean something for a weekly cadence — "every 2 months on
+		// monday" has no obvious reading, so we reject it instead of guessing.
+		if r.Freq != freqWeekly {
+			return errors.New("recurrence.weekdays is only allowed with a weekly cadence")
+		}
+		seen := map[int32]bool{}
+		days := make([]int32, 0, len(r.Weekdays))
+		for _, d := range r.Weekdays {
+			if d < 1 || d > 7 {
+				return errors.New("recurrence.weekdays must be between 1 (monday) and 7 (sunday)")
+			}
+			if !seen[d] {
+				seen[d] = true
+				days = append(days, d)
+			}
+		}
+		sort.Slice(days, func(i, j int) bool { return days[i] < days[j] })
+		r.Weekdays = days
+	}
+
+	if r.Until != nil && r.Count != nil {
+		return errors.New("recurrence.until and recurrence.count are mutually exclusive")
+	}
+	// 0 is a legitimate value, not a rejected one: a spent series carries it, and
+	// the client sends back the rule it was given. Only a negative count is wrong.
+	if r.Count != nil && *r.Count < 0 {
+		return errors.New("recurrence.count must be >= 0")
+	}
 	return nil
+}
+
+// hasWeekday reports whether an ISO weekday is part of the rule.
+func (r recurrenceRule) hasWeekday(d int32) bool {
+	for _, w := range r.Weekdays {
+		if w == d {
+			return true
+		}
+	}
+	return false
 }
 
 // nextDue is the deadline of the occurrence following `from`.
@@ -57,6 +112,9 @@ func (r *recurrenceRule) validate() error {
 // @param from the current occurrence's deadline
 // @param notBefore usually "now": the moment the result has to be later than
 func nextDue(from time.Time, rule recurrenceRule, notBefore time.Time) time.Time {
+	if rule.Freq == freqWeekly && len(rule.Weekdays) > 0 {
+		return nextWeekdayDue(from, rule, notBefore)
+	}
 	next := from
 	for i := 0; i < maxAdvanceSteps; i++ {
 		next = advance(next, rule)
@@ -65,6 +123,49 @@ func nextDue(from time.Time, rule recurrenceRule, notBefore time.Time) time.Time
 		}
 	}
 	return next
+}
+
+// nextWeekdayDue handles "every mon + thu": instead of adding a fixed span it
+// walks forward day by day and takes the first selected weekday that lands in a
+// week the interval actually covers. The week of `from` is the anchor, so
+// "every 2 weeks on mon + thu" skips the weeks in between rather than drifting.
+func nextWeekdayDue(from time.Time, rule recurrenceRule, notBefore time.Time) time.Time {
+	anchor := dayIndex(weekStart(from))
+	interval := int(rule.Interval)
+	d := from
+	for i := 0; i < maxAdvanceDays; i++ {
+		d = d.AddDate(0, 0, 1)
+		if !rule.hasWeekday(isoWeekday(d)) {
+			continue
+		}
+		if (dayIndex(weekStart(d))-anchor)/7%interval != 0 {
+			continue
+		}
+		if d.After(notBefore) {
+			return d
+		}
+	}
+	return d
+}
+
+// isoWeekday maps Go's Sunday-first weekday onto ISO-8601 (monday = 1).
+func isoWeekday(t time.Time) int32 {
+	if w := t.Weekday(); w == time.Sunday {
+		return 7
+	} else {
+		return int32(w)
+	}
+}
+
+// weekStart is the monday of t's week, keeping t's time of day.
+func weekStart(t time.Time) time.Time {
+	return t.AddDate(0, 0, -int(isoWeekday(t))+1)
+}
+
+// dayIndex counts whole days from the epoch, computed on the calendar date only
+// so that a DST change can't make a "week" 167 or 169 hours long.
+func dayIndex(t time.Time) int {
+	return int(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC).Unix() / 86400)
 }
 
 // advance moves a date forward by exactly one interval of the rule.

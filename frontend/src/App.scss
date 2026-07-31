@@ -1240,6 +1240,61 @@ button.rail-proj__row:hover {
 .menu-input select:focus-visible {
   box-shadow: var(--focus-ring);
 }
+/* a labelled block inside a field menu — used by the repeat field for the weekday
+   row and the end-of-series row, which are choices rather than a single value */
+.menu-section {
+  padding: 8px 6px 6px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+}
+.menu-section__label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  padding: 0 4px 6px;
+}
+.menu-section__input {
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  outline: none;
+}
+.menu-section__input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+/* the seven weekday toggles (and the three end modes) — equal-width, on/off */
+.day-row {
+  display: flex;
+  gap: 3px;
+}
+.day {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 5px 0;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.day--wide {
+  font-size: 0.72rem;
+}
+.day:hover:not(.is-on) {
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+}
+.day.is-on {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
 
 .state {
   color: var(--color-text-secondary);

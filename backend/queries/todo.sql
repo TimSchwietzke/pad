@@ -29,8 +29,9 @@ WHERE id = $1 AND user_id = $2;
 -- name: CreateTodo :one
 -- New todos append to the end of the user's custom order (max position + 1).
 INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes,
-                   recurrence_freq, recurrence_interval, spawned_from_id, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                   recurrence_freq, recurrence_interval, recurrence_until, recurrence_remaining,
+                   spawned_from_id, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
         COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
 RETURNING *;
 
@@ -47,6 +48,43 @@ SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at 
     recurrence_freq = $8, recurrence_interval = $9, updated_at = now()
 WHERE id = $10 AND user_id = $11
 RETURNING *;
+
+-- name: SetTodoRecurrenceEnd :exec
+-- The two end-of-series columns move separately from the rest of the update, so
+-- the handler can leave them alone when a request doesn't carry a rule at all.
+UPDATE todos
+SET recurrence_until = $1, recurrence_remaining = $2, updated_at = now()
+WHERE id = $3 AND user_id = $4;
+
+-- Recurrence weekdays ------------------------------------------------------
+
+-- name: AddRecurrenceDay :exec
+INSERT INTO todo_recurrence_days (todo_id, weekday)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
+
+-- name: ClearRecurrenceDays :exec
+DELETE FROM todo_recurrence_days WHERE todo_id = $1;
+
+-- name: ListRecurrenceDaysForTodo :many
+SELECT weekday FROM todo_recurrence_days
+WHERE todo_id = $1
+ORDER BY weekday;
+
+-- name: ListRecurrenceDaysForUserTodos :many
+-- Every (todo, weekday) pair for the user, so the list endpoint can embed the
+-- weekday rules in one round-trip instead of a query per row — the same shape
+-- ListTagsForUserTodos uses.
+SELECT d.todo_id, d.weekday FROM todo_recurrence_days d
+JOIN todos t ON t.id = d.todo_id
+WHERE t.user_id = $1
+ORDER BY d.todo_id, d.weekday;
+
+-- name: CopyRecurrenceDays :exec
+-- Carries the weekday rule over to a spawned occurrence.
+INSERT INTO todo_recurrence_days (todo_id, weekday)
+SELECT sqlc.arg(dst_todo_id), d.weekday FROM todo_recurrence_days d WHERE d.todo_id = sqlc.arg(src_todo_id)
+ON CONFLICT DO NOTHING;
 
 -- name: GetSpawnedTodo :one
 -- The successor a recurring occurrence created when it was checked done. Used to

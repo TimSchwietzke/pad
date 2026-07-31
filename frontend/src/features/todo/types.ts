@@ -22,6 +22,16 @@ export type RecurrenceFreq = 'daily' | 'weekly' | 'monthly' | 'yearly'
 export interface Recurrence {
   freq: RecurrenceFreq
   interval: number
+  /**
+   * ISO weekdays the rule is pinned to (1 = monday … 7 = sunday), for rules like
+   * "every mon + thu". Only meaningful with a weekly cadence; empty or absent
+   * means the deadline's own weekday carries the series.
+   */
+  weekdays?: number[]
+  /** Ends the series on this date. Mutually exclusive with `count`. */
+  until?: string | null
+  /** Ends the series after this many more occurrences; counts down on each spawn. */
+  count?: number | null
 }
 
 export interface Todo {

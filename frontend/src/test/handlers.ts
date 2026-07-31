@@ -62,12 +62,28 @@ const now = () => new Date().toISOString()
  */
 function nextDueIso(due: string | null, r: Recurrence): string {
   const d = due ? new Date(due) : new Date()
+  const days = r.weekdays ?? []
+  if (r.freq === 'weekly' && days.length > 0) {
+    // walk to the next selected weekday (ISO: monday = 1, sunday = 7)
+    for (let i = 0; i < 70; i++) {
+      d.setDate(d.getDate() + 1)
+      if (days.includes(d.getDay() === 0 ? 7 : d.getDay())) break
+    }
+    return d.toISOString()
+  }
   const n = r.interval
   if (r.freq === 'daily') d.setDate(d.getDate() + n)
   else if (r.freq === 'weekly') d.setDate(d.getDate() + 7 * n)
   else if (r.freq === 'monthly') d.setMonth(d.getMonth() + n)
   else d.setFullYear(d.getFullYear() + n)
   return d.toISOString()
+}
+
+/** Mirrors the backend's end-of-series check: is this occurrence the last one? */
+function seriesEnded(r: Recurrence, nextDue: string): boolean {
+  if (r.count != null && r.count <= 0) return true
+  if (r.until != null && new Date(nextDue) > new Date(r.until)) return true
+  return false
 }
 
 export const handlers = [
@@ -167,13 +183,23 @@ export const handlers = [
     // Mirror the backend's recurrence behaviour: completing a repeating task
     // spawns the next occurrence, un-checking it takes an untouched one back.
     // Component tests then exercise the same flow the real app sees.
-    if (existing.status === 'open' && updated.status === 'done' && updated.recurrence) {
+    const due = updated.recurrence ? nextDueIso(updated.due_at, updated.recurrence) : null
+    if (
+      existing.status === 'open' &&
+      updated.status === 'done' &&
+      updated.recurrence &&
+      due &&
+      !seriesEnded(updated.recurrence, due)
+    ) {
       const maxPos = db.todos.reduce((max, t) => Math.max(max, t.position), -1)
+      const rule = updated.recurrence
       const next: Todo = {
         ...updated,
         id: db.seq++,
         status: 'open',
-        due_at: nextDueIso(updated.due_at, updated.recurrence),
+        due_at: due,
+        // the countdown moves with the series, so the successor knows what's left
+        recurrence: { ...rule, count: rule.count != null ? rule.count - 1 : rule.count },
         position: maxPos + 1,
         created_at: now(),
         updated_at: now(),

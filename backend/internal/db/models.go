@@ -10,21 +10,23 @@ import (
 )
 
 type Todo struct {
-	ID                 int64          `json:"id"`
-	UserID             int64          `json:"user_id"`
-	ProjectID          sql.NullInt64  `json:"project_id"`
-	Title              string         `json:"title"`
-	Notes              string         `json:"notes"`
-	Priority           int32          `json:"priority"`
-	Status             string         `json:"status"`
-	DueAt              sql.NullTime   `json:"due_at"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
-	EstimateMinutes    sql.NullInt32  `json:"estimate_minutes"`
-	Position           int64          `json:"position"`
-	RecurrenceFreq     sql.NullString `json:"recurrence_freq"`
-	RecurrenceInterval int32          `json:"recurrence_interval"`
-	SpawnedFromID      sql.NullInt64  `json:"spawned_from_id"`
+	ID                  int64          `json:"id"`
+	UserID              int64          `json:"user_id"`
+	ProjectID           sql.NullInt64  `json:"project_id"`
+	Title               string         `json:"title"`
+	Notes               string         `json:"notes"`
+	Priority            int32          `json:"priority"`
+	Status              string         `json:"status"`
+	DueAt               sql.NullTime   `json:"due_at"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	EstimateMinutes     sql.NullInt32  `json:"estimate_minutes"`
+	Position            int64          `json:"position"`
+	RecurrenceFreq      sql.NullString `json:"recurrence_freq"`
+	RecurrenceInterval  int32          `json:"recurrence_interval"`
+	SpawnedFromID       sql.NullInt64  `json:"spawned_from_id"`
+	RecurrenceUntil     sql.NullTime   `json:"recurrence_until"`
+	RecurrenceRemaining sql.NullInt32  `json:"recurrence_remaining"`
 }
 
 type TodoProject struct {
@@ -34,6 +36,11 @@ type TodoProject struct {
 	Color     string    `json:"color"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type TodoRecurrenceDay struct {
+	TodoID  int64 `json:"todo_id"`
+	Weekday int16 `json:"weekday"`
 }
 
 type TodoTag struct {
