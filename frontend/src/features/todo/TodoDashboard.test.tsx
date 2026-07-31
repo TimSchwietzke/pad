@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { TodoDashboard } from './TodoDashboard'
 import type { Todo } from './types'
 import { renderWithClient } from '../../test/render'
-import { requestedSorts, resetDb } from '../../test/handlers'
+import { requestedQueries, requestedSorts, resetDb } from '../../test/handlers'
 import { server } from '../../test/server'
 
 /** Builds a todo with sensible defaults; override only what a test cares about. */
@@ -107,6 +107,76 @@ describe('TodoDashboard', () => {
     // typing clears the complaint again
     await user.keyboard('buy milk')
     expect(screen.queryByText('give it a title first')).not.toBeInTheDocument()
+  })
+
+  it('searches from the top bar and groups the hits under the module they live in', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'buy milk' }),
+        makeTodo({ id: 2, title: 'write report', notes: 'ask about the milk budget' }),
+        makeTodo({ id: 3, title: 'call plumber' }),
+      ],
+    })
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+
+    await user.type(screen.getByRole('combobox', { name: 'search' }), 'milk')
+
+    // the debounced term reaches the API
+    await waitFor(() => expect(requestedQueries()).toContain('milk'))
+    const panel = await screen.findByRole('listbox', { name: 'search results' })
+    // the "where": hits are labelled with their module
+    expect(within(panel).getByText('todo:')).toBeInTheDocument()
+    expect(within(panel).getByRole('option', { name: /buy milk/ })).toBeInTheDocument()
+    // matched on its notes — the excerpt says why
+    expect(within(panel).getByText(/ask about the milk budget/)).toBeInTheDocument()
+    expect(within(panel).queryByRole('option', { name: /call plumber/ })).not.toBeInTheDocument()
+  })
+
+  it('says so when a search finds nothing', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'buy milk' })] })
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+
+    await user.type(screen.getByRole('combobox', { name: 'search' }), 'zzz')
+    expect(await screen.findByText(/nothing matches/)).toBeInTheDocument()
+  })
+
+  it('jumps into the search with "/" and clears it with escape', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'buy milk' })] })
+    const user = userEvent.setup()
+    renderWithClient(<TodoDashboard />)
+    await screen.findByRole('button', { name: 'toggle sidebar' })
+
+    await user.keyboard('/')
+    const field = screen.getByRole('combobox', { name: 'search' })
+    expect(field).toHaveFocus()
+
+    await user.type(field, 'milk')
+    await screen.findByRole('listbox', { name: 'search results' })
+    await user.keyboard('{Escape}')
+    expect(field).toHaveValue('')
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: 'search results' })).not.toBeInTheDocument())
+  })
+
+  it('opens the to-dos view on the chosen hit, past filters that would hide it', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'buy milk', status: 'done' }),
+        makeTodo({ id: 2, title: 'call plumber' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+
+    await user.type(screen.getByRole('combobox', { name: 'search' }), 'milk')
+    const hit = await screen.findByRole('option', { name: /buy milk/ })
+    await user.click(hit)
+
+    // we land in the to-dos list, on the task — even though it is done and the
+    // list defaults to showing open tasks only
+    expect(await screen.findByRole('button', { name: /create a task/i })).toBeInTheDocument()
+    await waitFor(() => expect(container.querySelector('[data-todo-id="1"]')).toBeTruthy())
   })
 
   it('opens the shortcuts sheet with "?" and closes it with escape', async () => {
@@ -469,13 +539,15 @@ describe('TodoDashboard', () => {
     expect(app.dataset.sidebar).toBe('closed')
   })
 
-  it('shows search as a disabled "coming soon" field until it is wired up', async () => {
+  it('offers a live search in the top bar, with its "/" hint', async () => {
     renderWithClient(<TodoDashboard />)
     await screen.findByRole('button', { name: 'toggle sidebar' })
 
-    const search = screen.getByLabelText('search')
-    expect(search).toBeDisabled()
-    expect(search.getAttribute('placeholder')).toMatch(/coming soon/i)
+    const search = screen.getByRole('combobox', { name: 'search' })
+    expect(search).toBeEnabled()
+    expect(search.getAttribute('placeholder')).toBe('search')
+    // nothing is searched yet, so no panel hangs under the field
+    expect(screen.queryByRole('listbox', { name: 'search results' })).not.toBeInTheDocument()
   })
 
   it('assigns a tag to a todo from the tags field', async () => {

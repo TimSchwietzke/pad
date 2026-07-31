@@ -13,9 +13,15 @@ export const todoApi = {
     http.put<Project>(`/api/todo/projects/${id}`, input),
   deleteProject: (id: number) => http.del(`/api/todo/projects/${id}`),
 
-  // Todos. `sort` is the combinable spec, e.g. "-priority,due,estimate".
-  listTodos: (sort?: string) =>
-    http.get<Todo[]>(`/api/todo/todos${sort ? `?sort=${encodeURIComponent(sort)}` : ''}`),
+  // Todos. `sort` is the combinable spec, e.g. "-priority,due,estimate";
+  // `q` narrows the list to titles/notes containing that text.
+  listTodos: (sort?: string, q?: string) => {
+    const params = new URLSearchParams()
+    if (sort) params.set('sort', sort)
+    if (q) params.set('q', q)
+    const query = params.toString()
+    return http.get<Todo[]>(`/api/todo/todos${query ? `?${query}` : ''}`)
+  },
   createTodo: (input: TodoInput) => http.post<Todo>('/api/todo/todos', input),
   updateTodo: (id: number, input: TodoInput) => http.put<Todo>(`/api/todo/todos/${id}`, input),
   deleteTodo: (id: number) => http.del(`/api/todo/todos/${id}`),

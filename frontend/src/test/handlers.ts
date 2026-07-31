@@ -18,9 +18,20 @@ interface Db {
   tagSeq: number
   /** Every `sort` spec the app has asked for, in order — lets tests assert sorting. */
   requestedSorts: string[]
+  /** Every `q` the app has searched for — lets tests assert the debounced term. */
+  requestedQueries: string[]
 }
 
-const db: Db = { todos: [], projects: [], tags: [], tagLinks: {}, seq: 1, tagSeq: 1, requestedSorts: [] }
+const db: Db = {
+  todos: [],
+  projects: [],
+  tags: [],
+  tagLinks: {},
+  seq: 1,
+  tagSeq: 1,
+  requestedSorts: [],
+  requestedQueries: [],
+}
 
 /** Reset the fake backend between tests, optionally seeding rows. */
 export function resetDb(seed: Partial<Pick<Db, 'todos' | 'projects' | 'tags'>> = {}) {
@@ -35,6 +46,7 @@ export function resetDb(seed: Partial<Pick<Db, 'todos' | 'projects' | 'tags'>> =
   db.seq = db.todos.reduce((max, t) => Math.max(max, t.id), 0) + 1
   db.tagSeq = db.tags.reduce((max, t) => Math.max(max, t.id), 0) + 1
   db.requestedSorts = []
+  db.requestedQueries = []
 }
 
 /** The tags currently linked to a todo, resolved from the id map (like the real list embed). */
@@ -49,6 +61,11 @@ export function requestedSorts(): readonly string[] {
   return db.requestedSorts
 }
 
+/** The search terms requested so far (e.g. ["milk"]). */
+export function requestedQueries(): readonly string[] {
+  return db.requestedQueries
+}
+
 const now = () => new Date().toISOString()
 
 export const handlers = [
@@ -56,16 +73,25 @@ export const handlers = [
   http.get('/api/todo/tags', () => HttpResponse.json(db.tags)),
 
   http.get('/api/todo/todos', ({ request }) => {
-    const sort = new URL(request.url).searchParams.get('sort')
+    const params = new URL(request.url).searchParams
+    const sort = params.get('sort')
     if (sort) db.requestedSorts.push(sort)
+    const q = params.get('q')
+    if (q) db.requestedQueries.push(q)
     // The custom mode asks for position order; everything else keeps insertion order
     // (backend sorting itself is covered by Go tests).
     const ordered =
       sort === 'position'
         ? [...db.todos].sort((a, b) => a.position - b.position || a.id - b.id)
         : db.todos
+    // ?q= narrows by title/notes, like the real ILIKE — enough for the frontend to
+    // prove it sends the term and renders what comes back.
+    const needle = q?.trim().toLowerCase() ?? ''
+    const matching = needle
+      ? ordered.filter((t) => `${t.title} ${t.notes ?? ''}`.toLowerCase().includes(needle))
+      : ordered
     // embed each todo's tags, exactly like the real list endpoint
-    return HttpResponse.json(ordered.map((t) => ({ ...t, tags: tagsFor(t.id) })))
+    return HttpResponse.json(matching.map((t) => ({ ...t, tags: tagsFor(t.id) })))
   }),
 
   http.post('/api/todo/todos', async ({ request }) => {

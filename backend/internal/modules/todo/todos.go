@@ -106,8 +106,9 @@ func (m *Module) ensureProjectOwned(ctx context.Context, projectID *int64, uid i
 }
 
 // listTodos returns the current user's todos, ordered by the optional ?sort=
-// spec (default: priority desc, then soonest due). Sort columns come from a
-// whitelist (see sort.go), so the dynamic ORDER BY can't be abused.
+// spec (default: priority desc, then soonest due) and narrowed by the optional
+// ?q= text search. Sort columns come from a whitelist (see sort.go), so the
+// dynamic ORDER BY can't be abused; the search term is a bound parameter.
 func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 	terms, err := parseSort(r.URL.Query().Get("sort"))
 	if err != nil {
@@ -116,9 +117,18 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position, created_at, updated_at`
-	query := `SELECT ` + cols + ` FROM todos WHERE user_id = $1 ORDER BY ` + orderClause(terms)
+	where := `user_id = $1`
+	args := []any{userID(r)}
+	// Free-text search over what the user actually wrote: title and notes.
+	// Case-insensitive substring, because people search for a fragment they
+	// remember ("milk"), not for a prefix.
+	if q := searchTerm(r.URL.Query().Get("q")); q != "" {
+		where += ` AND (title ILIKE $2 OR notes ILIKE $2)`
+		args = append(args, "%"+q+"%")
+	}
+	query := `SELECT ` + cols + ` FROM todos WHERE ` + where + ` ORDER BY ` + orderClause(terms)
 
-	rows, err := m.db.QueryContext(r.Context(), query, userID(r))
+	rows, err := m.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not load todos")
 		return

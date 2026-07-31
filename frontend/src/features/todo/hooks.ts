@@ -7,7 +7,7 @@ const keys = {
   projects: ['todo', 'projects'] as const,
   tags: ['todo', 'tags'] as const,
   todos: ['todo', 'todos'] as const,
-  todoList: (sort?: string) => ['todo', 'todos', sort ?? 'default'] as const,
+  todoList: (sort?: string, q?: string) => ['todo', 'todos', sort ?? 'default', q ?? ''] as const,
 }
 
 /** Lists the current user's projects. */
@@ -21,11 +21,19 @@ export function useTags() {
 }
 
 /**
- * Lists todos ordered by the given sort spec (e.g. "-priority,due"). Each sort
- * is cached separately so switching the order is instant once seen.
+ * Lists todos ordered by the given sort spec (e.g. "-priority,due") and, with
+ * `q`, narrowed to the ones whose title or notes contain that text. Sort and
+ * search are part of the cache key, so going back to a previous list is instant;
+ * `placeholderData` keeps the last result on screen while a new search loads, so
+ * typing doesn't flash the list empty between keystrokes.
  */
-export function useTodos(sort?: string) {
-  return useQuery({ queryKey: keys.todoList(sort), queryFn: () => todoApi.listTodos(sort) })
+export function useTodos(sort?: string, q?: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.todoList(sort, q),
+    queryFn: () => todoApi.listTodos(sort, q),
+    placeholderData: (previous) => previous,
+    enabled: options.enabled ?? true,
+  })
 }
 
 /** Creates a todo and refreshes every cached todo list. */

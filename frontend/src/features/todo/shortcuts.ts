@@ -51,6 +51,7 @@ export const shortcutSections: ShortcutSection[] = [
     title: 'anywhere',
     items: [
       { keys: ['c'], what: 'start a new task' },
+      { keys: ['/'], what: 'jump into the search' },
       { keys: ['b'], what: 'show or hide the sidebar' },
       { keys: ['?'], what: 'open this sheet' },
       { keys: ['esc'], what: "close what's open" },

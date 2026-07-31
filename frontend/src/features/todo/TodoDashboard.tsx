@@ -22,9 +22,9 @@ import { bucketOf, openDueOn, startOfDay, triageStats } from './triage'
 import { groupHint, groupKeys, groupTodos } from './grouping'
 import type { Group, GroupKey } from './grouping'
 import { ShortcutsSheet } from './ShortcutsSheet'
+import { GlobalSearch } from './GlobalSearch'
 import { isBareKey, isTypingTarget } from './shortcuts'
 import {
-  Search,
   Moon,
   Sun,
   Bell,
@@ -168,17 +168,25 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const [projectFilter, setProjectFilter] = usePersistentState<number | null>('pad.filter.project', null)
   const [tagFilter, setTagFilter] = usePersistentState<number | null>('pad.filter.tag', null)
 
+  // The top bar's search. Deliberately NOT persisted: a search is a moment, not a
+  // setting. `searchFocus` is bumped by "/" so the key lands the cursor in the
+  // field even when it already holds a term.
+  const [searchFocus, setSearchFocus] = useState(0)
+  // Where a search result sends you: the task's id, so the row can be scrolled to
+  // and flashed once the to-dos view is on screen.
+  const [jumpId, setJumpId] = useState<number | null>(null)
+
   useEffect(() => {
     const root = document.documentElement
     root.dataset.preset = preset
     root.dataset.mode = mode
   }, [preset, mode])
 
-  // App-level keys. Escape closes the nav sidebar, "b" toggles it, "?" opens the
-  // shortcuts sheet — all ignored while the user is typing or inside a menu, so
-  // they never fight a text field or Radix's own typeahead. (Search — and its ⌘K
-  // jump-to — is not wired yet; the field shows a "coming soon" state rather
-  // than pretending to work.)
+  // App-level keys. Escape closes the nav sidebar, "b" toggles it, "/" jumps into
+  // the task search and "?" opens the shortcuts sheet — all ignored while the user
+  // is typing or inside a menu, so they never fight a text field or Radix's own
+  // typeahead. (The top bar's ⌘K jump-to is a different, still unbuilt thing; that
+  // field stays honestly disabled.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -189,6 +197,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
       if (e.key === 'b') {
         e.preventDefault()
         setSidebarOpen((v) => !v)
+      } else if (e.key === '/') {
+        e.preventDefault() // Firefox' quick-find would swallow the key otherwise
+        setSearchFocus((n) => n + 1)
       } else if (e.key === '?') {
         e.preventDefault()
         setShortcutsOpen(true)
@@ -331,6 +342,20 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     // optional call: jsdom (tests) doesn't implement scrollIntoView
     el?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
   }, [newId, todos.data])
+
+  // Landing on a search hit: same treatment as a fresh task — scroll it into view
+  // and flash it once, so the eye finds the row the search was about.
+  const jumpTimer = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (jumpId == null) return
+    const el = document.querySelector(`[data-todo-id="${jumpId}"]`)
+    if (!el) return // the list hasn't caught up yet; the next render tries again
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    window.clearTimeout(jumpTimer.current)
+    jumpTimer.current = window.setTimeout(() => setJumpId(null), 2000)
+  }, [jumpId, todos.data])
+  useEffect(() => () => window.clearTimeout(jumpTimer.current), [])
 
   /** Inline param edit: resend the whole todo with one field changed (optimistic). */
   const patchTodo = (todo: Todo, patch: Partial<TodoInput>) => {
@@ -505,13 +530,20 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
             <PanelIcon />
           </Button>
         </div>
-        {/* search isn't wired yet — shown as a clearly inactive "coming soon" field
-            instead of a box that focuses but can't search (honest > pretend) */}
-        <label className="search is-soon" title="search is coming soon">
-          <Search />
-          <input placeholder="search — coming soon" aria-label="search" disabled />
-          <span className="search__soon" aria-hidden>soon</span>
-        </label>
+        {/* one search for the whole app: results are grouped by the module they
+            live in, so the answer always says where it found something */}
+        <GlobalSearch
+          focusToken={searchFocus}
+          onJumpToTodo={(id) => {
+            // A hit must be reachable when you land: filters that would hide it
+            // step aside, otherwise the jump would point at an empty list.
+            setStatusFilter('both')
+            setProjectFilter(null)
+            setTagFilter(null)
+            setView('todos')
+            setJumpId(id)
+          }}
+        />
         <div className="topbar__actions">
           {/* preset lives in settings now; light/dark stays a quick top-bar toggle */}
           <Button variant="ghost" size="icon" type="button" className="h-8 w-8 [&_svg]:size-[18px]" onClick={() => setMode((m) => (m === 'light' ? 'dark' : 'light'))} aria-label="toggle light/dark">
@@ -900,7 +932,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                       (isEditing ? ' is-open' : '') +
                       (dragId === todo.id ? ' is-dragging' : '') +
                       (overId === todo.id && dragId !== todo.id ? ' is-drop-target' : '') +
-                      (newId === todo.id ? ' is-new' : '') +
+                      (newId === todo.id || jumpId === todo.id ? ' is-new' : '') +
                       (leaving.get(todo.id) === 'closing' ? ' is-leaving' : '')
                     return (
                       <li
