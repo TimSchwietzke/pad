@@ -33,9 +33,11 @@ type todoResponse struct {
 	DueAt           *time.Time `json:"due_at"`
 	EstimateMinutes *int32     `json:"estimate_minutes"`
 	// Position is the rank in the user's manual "custom" order (see sort.go).
-	Position  int64     `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Position int64 `json:"position"`
+	// Recurrence is the repeat cadence, or null for a one-off task.
+	Recurrence *recurrenceRule `json:"recurrence"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
 	// Tags attached to this todo. Always a slice (never null); populated by the
 	// list handler, empty on single-todo responses.
 	Tags []tagResponse `json:"tags"`
@@ -52,10 +54,20 @@ func toTodoResponse(t db.Todo) todoResponse {
 		DueAt:           timePtr(t.DueAt),
 		EstimateMinutes: int32Ptr(t.EstimateMinutes),
 		Position:        t.Position,
+		Recurrence:      rulePtr(t),
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 		Tags:            []tagResponse{},
 	}
+}
+
+// rulePtr rebuilds the recurrence rule from its two columns; a todo without a
+// cadence has none (null in JSON), and the interval alone means nothing.
+func rulePtr(t db.Todo) *recurrenceRule {
+	if !t.RecurrenceFreq.Valid {
+		return nil
+	}
+	return &recurrenceRule{Freq: t.RecurrenceFreq.String, Interval: t.RecurrenceInterval}
 }
 
 // todoRequest is the create/update payload. Pointer fields are optional.
@@ -67,6 +79,8 @@ type todoRequest struct {
 	Status          string     `json:"status"`
 	DueAt           *time.Time `json:"due_at"`
 	EstimateMinutes *int32     `json:"estimate_minutes"`
+	// Recurrence turns the task into a repeating one; null (or absent) clears it.
+	Recurrence *recurrenceRule `json:"recurrence"`
 }
 
 // normalizeAndValidate trims the title, defaults an empty status to "open", and
@@ -88,7 +102,28 @@ func (b *todoRequest) normalizeAndValidate() error {
 	if b.EstimateMinutes != nil && *b.EstimateMinutes < 0 {
 		return errors.New("estimate_minutes must be >= 0")
 	}
+	if b.Recurrence != nil {
+		if err := b.Recurrence.validate(); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// nullFreq / interval split a recurrence rule into the two columns it is stored
+// in. A todo without a rule keeps the interval's default of 1, which is inert.
+func (b *todoRequest) nullFreq() sql.NullString {
+	if b.Recurrence == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: b.Recurrence.Freq, Valid: true}
+}
+
+func (b *todoRequest) interval() int32 {
+	if b.Recurrence == nil {
+		return 1
+	}
+	return b.Recurrence.Interval
 }
 
 // ensureProjectOwned rejects a todo that points at a project the user doesn't
@@ -115,7 +150,8 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position, created_at, updated_at`
+	const cols = `id, user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position, ` +
+		`recurrence_freq, recurrence_interval, spawned_from_id, created_at, updated_at`
 	query := `SELECT ` + cols + ` FROM todos WHERE user_id = $1 ORDER BY ` + orderClause(terms)
 
 	rows, err := m.db.QueryContext(r.Context(), query, userID(r))
@@ -130,7 +166,8 @@ func (m *Module) listTodos(w http.ResponseWriter, r *http.Request) {
 		var t db.Todo
 		if err := rows.Scan(
 			&t.ID, &t.UserID, &t.ProjectID, &t.Title, &t.Notes, &t.Priority,
-			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.Position, &t.CreatedAt, &t.UpdatedAt,
+			&t.Status, &t.DueAt, &t.EstimateMinutes, &t.Position,
+			&t.RecurrenceFreq, &t.RecurrenceInterval, &t.SpawnedFromID, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
 			httputil.Error(w, http.StatusInternalServerError, "db_error", "could not read todos")
 			return
@@ -180,14 +217,18 @@ func (m *Module) createTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := m.q.CreateTodo(r.Context(), db.CreateTodoParams{
-		UserID:          uid,
-		ProjectID:       nullInt64(body.ProjectID),
-		Title:           body.Title,
-		Notes:           body.Notes,
-		Priority:        body.Priority,
-		Status:          body.Status,
-		DueAt:           nullTime(body.DueAt),
-		EstimateMinutes: nullInt32(body.EstimateMinutes),
+		UserID:             uid,
+		ProjectID:          nullInt64(body.ProjectID),
+		Title:              body.Title,
+		Notes:              body.Notes,
+		Priority:           body.Priority,
+		Status:             body.Status,
+		DueAt:              nullTime(body.DueAt),
+		EstimateMinutes:    nullInt32(body.EstimateMinutes),
+		RecurrenceFreq:     body.nullFreq(),
+		RecurrenceInterval: body.interval(),
+		// Only the recurrence machinery links occurrences; the API never does.
+		SpawnedFromID: sql.NullInt64{},
 	})
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not create todo")
@@ -235,16 +276,40 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t, err := m.q.UpdateTodo(r.Context(), db.UpdateTodoParams{
-		ProjectID:       nullInt64(body.ProjectID),
-		Title:           body.Title,
-		Notes:           body.Notes,
-		Priority:        body.Priority,
-		Status:          body.Status,
-		DueAt:           nullTime(body.DueAt),
-		EstimateMinutes: nullInt32(body.EstimateMinutes),
-		ID:              id,
-		UserID:          uid,
+	// Recurrence keys off the status *change*, so we need to know what the row
+	// looked like before this write.
+	before, err := m.q.GetTodo(r.Context(), db.GetTodoParams{ID: id, UserID: uid})
+	if errors.Is(err, sql.ErrNoRows) {
+		httputil.Error(w, http.StatusNotFound, "not_found", "todo not found")
+		return
+	}
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not load todo")
+		return
+	}
+
+	// The update and the occurrence it may spawn (or take back) are one change:
+	// a task must never end up done without its successor, or vice versa.
+	tx, err := m.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
+		return
+	}
+	defer tx.Rollback() // no-op once committed
+	qtx := m.q.WithTx(tx)
+
+	t, err := qtx.UpdateTodo(r.Context(), db.UpdateTodoParams{
+		ProjectID:          nullInt64(body.ProjectID),
+		Title:              body.Title,
+		Notes:              body.Notes,
+		Priority:           body.Priority,
+		Status:             body.Status,
+		DueAt:              nullTime(body.DueAt),
+		EstimateMinutes:    nullInt32(body.EstimateMinutes),
+		RecurrenceFreq:     body.nullFreq(),
+		RecurrenceInterval: body.interval(),
+		ID:                 id,
+		UserID:             uid,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		httputil.Error(w, http.StatusNotFound, "not_found", "todo not found")
@@ -254,7 +319,79 @@ func (m *Module) updateTodo(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
 		return
 	}
+
+	switch {
+	case before.Status == statusOpen && t.Status == statusDone && t.RecurrenceFreq.Valid:
+		err = spawnNextOccurrence(r.Context(), qtx, t, time.Now())
+	case before.Status == statusDone && t.Status == statusOpen:
+		// undo — take back the successor this occurrence created
+		err = dropSpawnedOccurrence(r.Context(), qtx, t.ID, uid)
+	}
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "db_error", "could not update todo")
+		return
+	}
 	httputil.JSON(w, http.StatusOK, toTodoResponse(t))
+}
+
+// spawnNextOccurrence creates the follow-up for a recurring todo that was just
+// checked done. The completed row stays as it is — it is the history of that
+// occurrence — and the successor inherits everything that describes the task
+// (project, notes, priority, estimate, tags and the rule itself), with the
+// deadline moved on by one interval.
+//
+// A task without a deadline repeats relative to the moment it was finished,
+// which is the only meaningful anchor it has.
+func spawnNextOccurrence(ctx context.Context, q *db.Queries, done db.Todo, now time.Time) error {
+	rule := recurrenceRule{Freq: done.RecurrenceFreq.String, Interval: done.RecurrenceInterval}
+	base := now
+	if done.DueAt.Valid {
+		base = done.DueAt.Time
+	}
+
+	next, err := q.CreateTodo(ctx, db.CreateTodoParams{
+		UserID:             done.UserID,
+		ProjectID:          done.ProjectID,
+		Title:              done.Title,
+		Notes:              done.Notes,
+		Priority:           done.Priority,
+		Status:             statusOpen,
+		DueAt:              sql.NullTime{Time: nextDue(base, rule, now), Valid: true},
+		EstimateMinutes:    done.EstimateMinutes,
+		RecurrenceFreq:     done.RecurrenceFreq,
+		RecurrenceInterval: done.RecurrenceInterval,
+		SpawnedFromID:      sql.NullInt64{Int64: done.ID, Valid: true},
+	})
+	if err != nil {
+		return err
+	}
+	return q.CopyTodoTags(ctx, db.CopyTodoTagsParams{SrcTodoID: done.ID, DstTodoID: next.ID})
+}
+
+// dropSpawnedOccurrence removes the successor a recurring todo created when it
+// was checked done — the undo path, so a mis-click doesn't leave a phantom task
+// behind. Only an untouched successor goes: once the user has done anything with
+// it (finished it, and with that spawned one of its own), it is theirs to keep.
+func dropSpawnedOccurrence(ctx context.Context, q *db.Queries, parentID, uid int64) error {
+	child, err := q.GetSpawnedTodo(ctx, db.GetSpawnedTodoParams{
+		SpawnedFromID: sql.NullInt64{Int64: parentID, Valid: true},
+		UserID:        uid,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // not a recurring occurrence, or it never spawned one
+	}
+	if err != nil {
+		return err
+	}
+	if child.Status != statusOpen {
+		return nil
+	}
+	return q.DeleteTodo(ctx, db.DeleteTodoParams{ID: child.ID, UserID: uid})
 }
 
 // deleteTodo removes a todo. Like projects, deletes are idempotent (204).

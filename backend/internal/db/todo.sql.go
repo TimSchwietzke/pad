@@ -26,6 +26,24 @@ func (q *Queries) AddTagToTodo(ctx context.Context, arg AddTagToTodoParams) erro
 	return err
 }
 
+const copyTodoTags = `-- name: CopyTodoTags :exec
+INSERT INTO todo_tag_map (todo_id, tag_id)
+SELECT $1, m.tag_id FROM todo_tag_map m WHERE m.todo_id = $2
+ON CONFLICT DO NOTHING
+`
+
+type CopyTodoTagsParams struct {
+	DstTodoID int64 `json:"dst_todo_id"`
+	SrcTodoID int64 `json:"src_todo_id"`
+}
+
+// Carries the tags of one todo over to another — a spawned occurrence should look
+// exactly like the one it replaces.
+func (q *Queries) CopyTodoTags(ctx context.Context, arg CopyTodoTagsParams) error {
+	_, err := q.db.ExecContext(ctx, copyTodoTags, arg.DstTodoID, arg.SrcTodoID)
+	return err
+}
+
 const createProject = `-- name: CreateProject :one
 
 INSERT INTO todo_projects (user_id, name, color)
@@ -76,21 +94,25 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (TodoTag, 
 
 const createTodo = `-- name: CreateTodo :one
 
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes,
+                   recurrence_freq, recurrence_interval, spawned_from_id, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
         COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id
 `
 
 type CreateTodoParams struct {
-	UserID          int64         `json:"user_id"`
-	ProjectID       sql.NullInt64 `json:"project_id"`
-	Title           string        `json:"title"`
-	Notes           string        `json:"notes"`
-	Priority        int32         `json:"priority"`
-	Status          string        `json:"status"`
-	DueAt           sql.NullTime  `json:"due_at"`
-	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
+	UserID             int64          `json:"user_id"`
+	ProjectID          sql.NullInt64  `json:"project_id"`
+	Title              string         `json:"title"`
+	Notes              string         `json:"notes"`
+	Priority           int32          `json:"priority"`
+	Status             string         `json:"status"`
+	DueAt              sql.NullTime   `json:"due_at"`
+	EstimateMinutes    sql.NullInt32  `json:"estimate_minutes"`
+	RecurrenceFreq     sql.NullString `json:"recurrence_freq"`
+	RecurrenceInterval int32          `json:"recurrence_interval"`
+	SpawnedFromID      sql.NullInt64  `json:"spawned_from_id"`
 }
 
 // Todos --------------------------------------------------------------------
@@ -105,6 +127,9 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		arg.Status,
 		arg.DueAt,
 		arg.EstimateMinutes,
+		arg.RecurrenceFreq,
+		arg.RecurrenceInterval,
+		arg.SpawnedFromID,
 	)
 	var i Todo
 	err := row.Scan(
@@ -120,6 +145,9 @@ func (q *Queries) CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, e
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
 		&i.Position,
+		&i.RecurrenceFreq,
+		&i.RecurrenceInterval,
+		&i.SpawnedFromID,
 	)
 	return i, err
 }
@@ -193,6 +221,43 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (TodoPro
 	return i, err
 }
 
+const getSpawnedTodo = `-- name: GetSpawnedTodo :one
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id FROM todos
+WHERE spawned_from_id = $1 AND user_id = $2
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetSpawnedTodoParams struct {
+	SpawnedFromID sql.NullInt64 `json:"spawned_from_id"`
+	UserID        int64         `json:"user_id"`
+}
+
+// The successor a recurring occurrence created when it was checked done. Used to
+// take it back when the user un-checks the parent within the undo window.
+func (q *Queries) GetSpawnedTodo(ctx context.Context, arg GetSpawnedTodoParams) (Todo, error) {
+	row := q.db.QueryRowContext(ctx, getSpawnedTodo, arg.SpawnedFromID, arg.UserID)
+	var i Todo
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Notes,
+		&i.Priority,
+		&i.Status,
+		&i.DueAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EstimateMinutes,
+		&i.Position,
+		&i.RecurrenceFreq,
+		&i.RecurrenceInterval,
+		&i.SpawnedFromID,
+	)
+	return i, err
+}
+
 const getTag = `-- name: GetTag :one
 SELECT id, user_id, name FROM todo_tags
 WHERE id = $1 AND user_id = $2
@@ -211,7 +276,7 @@ func (q *Queries) GetTag(ctx context.Context, arg GetTagParams) (TodoTag, error)
 }
 
 const getTodo = `-- name: GetTodo :one
-SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position FROM todos
+SELECT id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id FROM todos
 WHERE id = $1 AND user_id = $2
 `
 
@@ -236,6 +301,9 @@ func (q *Queries) GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error) 
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
 		&i.Position,
+		&i.RecurrenceFreq,
+		&i.RecurrenceInterval,
+		&i.SpawnedFromID,
 	)
 	return i, err
 }
@@ -445,21 +513,24 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (T
 const updateTodo = `-- name: UpdateTodo :one
 
 UPDATE todos
-SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7, updated_at = now()
-WHERE id = $8 AND user_id = $9
-RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position
+SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7,
+    recurrence_freq = $8, recurrence_interval = $9, updated_at = now()
+WHERE id = $10 AND user_id = $11
+RETURNING id, user_id, project_id, title, notes, priority, status, due_at, created_at, updated_at, estimate_minutes, position, recurrence_freq, recurrence_interval, spawned_from_id
 `
 
 type UpdateTodoParams struct {
-	ProjectID       sql.NullInt64 `json:"project_id"`
-	Title           string        `json:"title"`
-	Notes           string        `json:"notes"`
-	Priority        int32         `json:"priority"`
-	Status          string        `json:"status"`
-	DueAt           sql.NullTime  `json:"due_at"`
-	EstimateMinutes sql.NullInt32 `json:"estimate_minutes"`
-	ID              int64         `json:"id"`
-	UserID          int64         `json:"user_id"`
+	ProjectID          sql.NullInt64  `json:"project_id"`
+	Title              string         `json:"title"`
+	Notes              string         `json:"notes"`
+	Priority           int32          `json:"priority"`
+	Status             string         `json:"status"`
+	DueAt              sql.NullTime   `json:"due_at"`
+	EstimateMinutes    sql.NullInt32  `json:"estimate_minutes"`
+	RecurrenceFreq     sql.NullString `json:"recurrence_freq"`
+	RecurrenceInterval int32          `json:"recurrence_interval"`
+	ID                 int64          `json:"id"`
+	UserID             int64          `json:"user_id"`
 }
 
 // The todo list is sorted dynamically in Go (a whitelisted ORDER BY), so there
@@ -473,6 +544,8 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		arg.Status,
 		arg.DueAt,
 		arg.EstimateMinutes,
+		arg.RecurrenceFreq,
+		arg.RecurrenceInterval,
 		arg.ID,
 		arg.UserID,
 	)
@@ -490,6 +563,9 @@ func (q *Queries) UpdateTodo(ctx context.Context, arg UpdateTodoParams) (Todo, e
 		&i.UpdatedAt,
 		&i.EstimateMinutes,
 		&i.Position,
+		&i.RecurrenceFreq,
+		&i.RecurrenceInterval,
+		&i.SpawnedFromID,
 	)
 	return i, err
 }

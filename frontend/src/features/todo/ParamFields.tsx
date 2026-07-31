@@ -6,11 +6,12 @@ import {
   Clock as ClockIcon,
   Flag as FlagIcon,
   Folder as FolderIcon,
+  Repeat as RepeatIcon,
   Tag as TagIcon,
 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { Priority, Project, Tag } from './types'
-import { formatDue, formatEstimate, priorityLabel } from './format'
+import type { Priority, Project, Recurrence, RecurrenceFreq, Tag } from './types'
+import { formatDue, formatEstimate, formatRecurrence, priorityLabel } from './format'
 
 // field icons — lucide, sized down for the small chips
 const Folder = () => <FolderIcon size={14} />
@@ -288,6 +289,103 @@ export function DueField({ value, onChange }: { value: string | null; onChange: 
       </FieldMenu>
     </Popover>
   )
+}
+
+// The cadences offered as one click. Anything else (every 3 days, every 6 months)
+// comes from the interval input below them.
+const REPEAT_PRESETS: Recurrence[] = [
+  { freq: 'daily', interval: 1 },
+  { freq: 'weekly', interval: 1 },
+  { freq: 'weekly', interval: 2 },
+  { freq: 'monthly', interval: 1 },
+  { freq: 'yearly', interval: 1 },
+]
+
+const REPEAT_UNITS: RecurrenceFreq[] = ['daily', 'weekly', 'monthly', 'yearly']
+
+/**
+ * repeat picker — the common cadences plus a free "every N <unit>" row. Setting a
+ * rule doesn't change anything on its own; it takes effect when the task is checked
+ * done, which is when the next occurrence appears (the backend spawns it).
+ */
+export function RepeatField({ value, onChange }: { value: Recurrence | null; onChange: (v: Recurrence | null) => void }) {
+  const [open, setOpen] = useState(false)
+  const [count, setCount] = useState('')
+  const [unit, setUnit] = useState<RecurrenceFreq>('weekly')
+  const same = (a: Recurrence, b: Recurrence | null) => !!b && a.freq === b.freq && a.interval === b.interval
+  const pick = (v: Recurrence | null) => {
+    onChange(v)
+    setOpen(false)
+  }
+  const applyCustom = () => {
+    const n = Number(count)
+    if (Number.isFinite(n) && n >= 1) pick({ freq: unit, interval: Math.round(n) })
+  }
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        // seed the custom row from the current rule, so tweaking it starts where you are
+        if (o) {
+          setCount(value ? String(value.interval) : '')
+          setUnit(value?.freq ?? 'weekly')
+        }
+        setOpen(o)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Chip icon={<RepeatIcon size={14} />} label={formatRecurrence(value)} placeholder="repeat" set={value != null} />
+      </PopoverTrigger>
+      <FieldMenu>
+        {REPEAT_PRESETS.map((r) => (
+          <MenuItem key={`${r.freq}-${r.interval}`} active={same(r, value)} onClick={() => pick(r)}>
+            {formatRecurrence(r)}
+          </MenuItem>
+        ))}
+        {value != null && (
+          <MenuItem onClick={() => pick(null)}>
+            <span className="menu-item__muted">doesn’t repeat</span>
+          </MenuItem>
+        )}
+        <div className="menu-input">
+          <span className="menu-input__prefix">every</span>
+          <input
+            type="number"
+            min={1}
+            inputMode="numeric"
+            value={count}
+            placeholder="2"
+            aria-label="repeat interval"
+            onChange={(e) => setCount(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                applyCustom()
+              }
+            }}
+          />
+          <select aria-label="repeat unit" value={unit} onChange={(e) => setUnit(e.target.value as RecurrenceFreq)}>
+            {REPEAT_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {freqUnitLabel[u]}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="menu-input__apply" onClick={applyCustom}>
+            set
+          </button>
+        </div>
+      </FieldMenu>
+    </Popover>
+  )
+}
+
+// Unit names for the "every N …" select — the noun, not the adverb.
+const freqUnitLabel: Record<RecurrenceFreq, string> = {
+  daily: 'days',
+  weekly: 'weeks',
+  monthly: 'months',
+  yearly: 'years',
 }
 
 /**

@@ -28,8 +28,9 @@ WHERE id = $1 AND user_id = $2;
 
 -- name: CreateTodo :one
 -- New todos append to the end of the user's custom order (max position + 1).
-INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+INSERT INTO todos (user_id, project_id, title, notes, priority, status, due_at, estimate_minutes,
+                   recurrence_freq, recurrence_interval, spawned_from_id, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
         COALESCE((SELECT MAX(position) + 1 FROM todos WHERE user_id = $1), 0))
 RETURNING *;
 
@@ -42,9 +43,25 @@ WHERE id = $1 AND user_id = $2;
 
 -- name: UpdateTodo :one
 UPDATE todos
-SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7, updated_at = now()
-WHERE id = $8 AND user_id = $9
+SET project_id = $1, title = $2, notes = $3, priority = $4, status = $5, due_at = $6, estimate_minutes = $7,
+    recurrence_freq = $8, recurrence_interval = $9, updated_at = now()
+WHERE id = $10 AND user_id = $11
 RETURNING *;
+
+-- name: GetSpawnedTodo :one
+-- The successor a recurring occurrence created when it was checked done. Used to
+-- take it back when the user un-checks the parent within the undo window.
+SELECT * FROM todos
+WHERE spawned_from_id = $1 AND user_id = $2
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: CopyTodoTags :exec
+-- Carries the tags of one todo over to another — a spawned occurrence should look
+-- exactly like the one it replaces.
+INSERT INTO todo_tag_map (todo_id, tag_id)
+SELECT sqlc.arg(dst_todo_id), m.tag_id FROM todo_tag_map m WHERE m.todo_id = sqlc.arg(src_todo_id)
+ON CONFLICT DO NOTHING;
 
 -- name: DeleteTodo :exec
 DELETE FROM todos

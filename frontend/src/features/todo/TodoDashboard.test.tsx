@@ -19,6 +19,7 @@ function makeTodo(over: Partial<Todo> = {}): Todo {
     due_at: null,
     estimate_minutes: null,
     position: 0,
+    recurrence: null,
     tags: [],
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
@@ -754,6 +755,87 @@ describe('TodoDashboard', () => {
 
     await waitFor(() => expect(titles()).toEqual(['b', 'a', 'c']))
     await waitFor(() => expect(requestedSorts()).toContain('position'))
+  })
+
+  it('sets a repeat rule from the chip menu', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'water the plants' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('water the plants')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set repeat' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'weekly' }))
+
+    expect(await within(row).findByRole('button', { name: 'repeat: weekly' })).toBeInTheDocument()
+  })
+
+  it('builds a custom cadence from the "every n units" row', async () => {
+    resetDb({ todos: [makeTodo({ id: 1, title: 'deep clean' })] })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('deep clean')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set repeat' }))
+    await user.type(await screen.findByLabelText('repeat interval'), '3')
+    await user.selectOptions(screen.getByLabelText('repeat unit'), 'monthly')
+    await user.click(screen.getByRole('button', { name: 'set' }))
+
+    expect(await within(row).findByRole('button', { name: 'repeat: every 3 months' })).toBeInTheDocument()
+  })
+
+  it('completing a repeating task puts the next occurrence on the list', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'take out the bins', recurrence: { freq: 'weekly', interval: 1 } })],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard doneGraceMs={50} />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('take out the bins')
+
+    await user.click(screen.getByRole('checkbox', { name: /mark done/i }))
+
+    // the finished one leaves after its grace period; the successor stays behind
+    await waitFor(() => expect(container.querySelectorAll('.todo')).toHaveLength(1), { timeout: 3000 })
+    const rows = [...container.querySelectorAll('.todo')]
+    expect(rows[0].querySelector('.todo__title')?.textContent).toBe('take out the bins')
+    expect(rows[0].querySelector('[aria-label^="repeat"]')).toBeTruthy()
+    expect(await screen.findByText('you have 1 pending task')).toBeInTheDocument()
+  })
+
+  it('undoing within the grace period takes the spawned occurrence back', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'stretch', recurrence: { freq: 'daily', interval: 1 } })],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('stretch')
+
+    await user.click(screen.getByRole('checkbox', { name: /mark done/i }))
+    await waitFor(() => expect(container.querySelectorAll('.todo')).toHaveLength(2))
+
+    // un-check inside the grace period: back to a single open task
+    await user.click(screen.getAllByRole('checkbox', { name: /mark open/i })[0])
+    await waitFor(() => expect(container.querySelectorAll('.todo')).toHaveLength(1))
+    expect(await screen.findByText('you have 1 pending task')).toBeInTheDocument()
+  })
+
+  it('keeps the rule when another param is edited', async () => {
+    resetDb({
+      todos: [makeTodo({ id: 1, title: 'pay rent', recurrence: { freq: 'monthly', interval: 1 } })],
+    })
+    const user = userEvent.setup()
+    await openTodos(user)
+
+    const row = (await screen.findByText('pay rent')).closest('.todo') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'set priority' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'high' }))
+
+    // editing one chip must not silently end the series
+    expect(await within(row).findByText('high')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'repeat: monthly' })).toBeInTheDocument()
   })
 
   it('shows an error state when the list fails to load', async () => {
