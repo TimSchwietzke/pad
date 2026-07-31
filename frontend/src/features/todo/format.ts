@@ -1,4 +1,4 @@
-import type { Priority } from './types'
+import type { Priority, Recurrence } from './types'
 
 /** Human label for a non-zero priority. */
 export const priorityLabel: Record<Exclude<Priority, 0>, string> = { 1: 'low', 2: 'medium', 3: 'high' }
@@ -10,6 +10,25 @@ export function formatEstimate(min: number | null): string | null {
   const h = Math.floor(min / 60)
   const m = min % 60
   return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+/** Plural noun per cadence, for the "every N …" form. */
+const freqNoun: Record<Recurrence['freq'], string> = {
+  daily: 'days',
+  weekly: 'weeks',
+  monthly: 'months',
+  yearly: 'years',
+}
+
+/**
+ * Formats a repeat rule the way people say it: "daily", "weekly", and
+ * "every 2 weeks" once the interval stops being 1. "every 2 weeks" reads better
+ * than "fortnightly", which not everyone parses at a glance.
+ */
+export function formatRecurrence(r: Recurrence | null): string | null {
+  if (!r) return null
+  if (r.interval <= 1) return r.freq
+  return `every ${r.interval} ${freqNoun[r.freq]}`
 }
 
 /** Formats a due date relative to today, lowercased ("today", "tomorrow", "12 jul"). */

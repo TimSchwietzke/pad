@@ -13,8 +13,8 @@ import {
   useTodos,
   useUpdateTodo,
 } from './hooks'
-import type { Priority, Project, Tag, Todo, TodoInput } from './types'
-import { DueField, EffortField, PriorityField, ProjectField, TagsField } from './ParamFields'
+import type { Priority, Project, Recurrence, Tag, Todo, TodoInput } from './types'
+import { DueField, EffortField, PriorityField, ProjectField, RepeatField, TagsField } from './ParamFields'
 import { buildMarkdown, exportFields, exportFilename } from './exportMd'
 import type { ExportField, ExportSection } from './exportMd'
 import { formatDue, formatEstimate } from './format'
@@ -261,6 +261,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
       status: nowDone ? 'done' : 'open',
       due_at: todo.due_at,
       estimate_minutes: todo.estimate_minutes,
+      // carried along, not incidental: dropping it here would silently end a
+      // recurring series the moment the task is ticked off
+      recurrence: todo.recurrence,
     }
     update.mutate({ id: todo.id, input })
 
@@ -325,6 +328,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
         status: todo.status,
         due_at: todo.due_at,
         estimate_minutes: todo.estimate_minutes,
+        recurrence: todo.recurrence,
         ...patch,
       },
     })
@@ -941,6 +945,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                             <DueField value={todo.due_at} onChange={(v) => patchTodo(todo, { due_at: v })} />
                             <PriorityField value={todo.priority} onChange={(v) => patchTodo(todo, { priority: v })} />
                             <EffortField value={todo.estimate_minutes} onChange={(v) => patchTodo(todo, { estimate_minutes: v })} />
+                            <RepeatField value={todo.recurrence} onChange={(v) => patchTodo(todo, { recurrence: v })} />
                             <TagsField
                               value={todo.tags}
                               allTags={tags.data ?? []}
@@ -1013,6 +1018,7 @@ const exportFieldLabels: Record<ExportField, string> = {
   due: 'due date',
   priority: 'priority',
   effort: 'effort',
+  repeat: 'repeat',
   tags: 'tags',
 }
 
@@ -1514,6 +1520,7 @@ function CreateBar({
   const [priority, setPriority] = useState<Priority>(0)
   const [due, setDue] = useState<string | null>(null)
   const [effort, setEffort] = useState<number | null>(null)
+  const [repeat, setRepeat] = useState<Recurrence | null>(null)
   // Tags picked for the task being drafted. They only exist client-side until
   // Enter creates the todo — the parent then attaches them to the new row.
   const [selTags, setSelTags] = useState<Tag[]>([])
@@ -1526,6 +1533,7 @@ function CreateBar({
     setPriority(0)
     setDue(null)
     setEffort(null)
+    setRepeat(null)
     setSelTags([])
   }
   const close = () => {
@@ -1555,7 +1563,13 @@ function CreateBar({
   // set params or a typed title survive a stray click. Field menus are portaled,
   // so clicks inside `.popover` don't count as outside.
   const dirty =
-    title.trim() !== '' || projectId != null || priority !== 0 || due != null || effort != null || selTags.length > 0
+    title.trim() !== '' ||
+    projectId != null ||
+    priority !== 0 ||
+    due != null ||
+    effort != null ||
+    repeat != null ||
+    selTags.length > 0
   useEffect(() => {
     if (!open || dirty) return
     const onDown = (e: MouseEvent) => {
@@ -1597,7 +1611,15 @@ function CreateBar({
           const t = title.trim()
           if (!t) return
           onCreate(
-            { title: t, project_id: projectId, priority, status: 'open', due_at: due, estimate_minutes: effort },
+            {
+              title: t,
+              project_id: projectId,
+              priority,
+              status: 'open',
+              due_at: due,
+              estimate_minutes: effort,
+              recurrence: repeat,
+            },
             selTags.map((tag) => tag.id),
           )
           reset()
@@ -1622,6 +1644,7 @@ function CreateBar({
           <DueField value={due} onChange={setDue} />
           <PriorityField value={priority} onChange={setPriority} />
           <EffortField value={effort} onChange={setEffort} />
+          <RepeatField value={repeat} onChange={setRepeat} />
           <TagsField
             value={selTags}
             allTags={tags}

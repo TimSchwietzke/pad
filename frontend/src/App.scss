@@ -1195,6 +1195,35 @@ button.rail-proj__row:hover {
   font-size: 0.8rem;
   cursor: pointer;
 }
+/* the repeat field's "every [n] [unit]" row: a leading word, a narrow number and
+   a unit select, so the whole rule reads as one sentence. The row keeps its
+   default stretch alignment — only the label centres itself, so the apply button
+   still matches the input height here and in every other field menu. */
+.menu-input__prefix {
+  flex: none;
+  align-self: center;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+.menu-input__prefix + input {
+  flex: none;
+  width: 3.5rem;
+}
+.menu-input select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-primary);
+  padding: 5px 6px;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+.menu-input select:focus-visible {
+  box-shadow: var(--focus-ring);
+}
 
 .state {
   color: var(--color-text-secondary);

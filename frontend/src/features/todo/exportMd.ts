@@ -1,5 +1,5 @@
 import type { Project, Todo } from './types'
-import { formatDue, formatEstimate, priorityLabel } from './format'
+import { formatDue, formatEstimate, formatRecurrence, priorityLabel } from './format'
 
 /**
  * Markdown export of the visible to-do list. Pure functions only — the share
@@ -8,8 +8,8 @@ import { formatDue, formatEstimate, priorityLabel } from './format'
  */
 
 /** The optional per-task fields a user can include in the export. */
-export type ExportField = 'project' | 'due' | 'priority' | 'effort' | 'tags'
-export const exportFields: ExportField[] = ['project', 'due', 'priority', 'effort', 'tags']
+export type ExportField = 'project' | 'due' | 'priority' | 'effort' | 'repeat' | 'tags'
+export const exportFields: ExportField[] = ['project', 'due', 'priority', 'effort', 'repeat', 'tags']
 
 /** One exported group: the visible list's bucket (or null when the list is flat). */
 export interface ExportSection {
@@ -55,6 +55,10 @@ export function buildMarkdown(
       if (has('effort') && t.estimate_minutes != null) {
         const est = formatEstimate(t.estimate_minutes)
         if (est) parts.push(est)
+      }
+      if (has('repeat')) {
+        const rep = formatRecurrence(t.recurrence)
+        if (rep) parts.push(`repeats ${rep}`)
       }
       if (has('tags') && t.tags.length > 0) parts.push(t.tags.map((tag) => `#${tag.name}`).join(' '))
 

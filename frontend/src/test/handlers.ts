@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import type { Project, Tag, Todo, TodoInput } from '../features/todo/types'
+import type { Project, Recurrence, Tag, Todo, TodoInput } from '../features/todo/types'
 
 /**
  * A tiny in-memory stand-in for the `/api/todo` backend. It is just stateful
@@ -14,13 +14,15 @@ interface Db {
   tags: Tag[]
   /** todo id -> attached tag ids (the todo_tag_map stand-in) */
   tagLinks: Record<number, number[]>
+  /** spawned occurrence id -> the one it came from (the spawned_from_id column) */
+  spawnedFrom: Record<number, number>
   seq: number
   tagSeq: number
   /** Every `sort` spec the app has asked for, in order — lets tests assert sorting. */
   requestedSorts: string[]
 }
 
-const db: Db = { todos: [], projects: [], tags: [], tagLinks: {}, seq: 1, tagSeq: 1, requestedSorts: [] }
+const db: Db = { todos: [], projects: [], tags: [], tagLinks: {}, spawnedFrom: {}, seq: 1, tagSeq: 1, requestedSorts: [] }
 
 /** Reset the fake backend between tests, optionally seeding rows. */
 export function resetDb(seed: Partial<Pick<Db, 'todos' | 'projects' | 'tags'>> = {}) {
@@ -29,6 +31,7 @@ export function resetDb(seed: Partial<Pick<Db, 'todos' | 'projects' | 'tags'>> =
   db.tags = seed.tags ?? []
   // seed the tag links from any tags already on the seeded todos
   db.tagLinks = {}
+  db.spawnedFrom = {}
   for (const t of db.todos) {
     if (t.tags?.length) db.tagLinks[t.id] = t.tags.map((tag) => tag.id)
   }
@@ -50,6 +53,22 @@ export function requestedSorts(): readonly string[] {
 }
 
 const now = () => new Date().toISOString()
+
+/**
+ * The successor's deadline, mirroring the backend's rule: move on by one interval
+ * from the current deadline (or from today when there is none). The catch-up loop
+ * and the month-length clamping are the backend's business and covered by Go
+ * tests; here we only need a plausible date so the UI has something to show.
+ */
+function nextDueIso(due: string | null, r: Recurrence): string {
+  const d = due ? new Date(due) : new Date()
+  const n = r.interval
+  if (r.freq === 'daily') d.setDate(d.getDate() + n)
+  else if (r.freq === 'weekly') d.setDate(d.getDate() + 7 * n)
+  else if (r.freq === 'monthly') d.setMonth(d.getMonth() + n)
+  else d.setFullYear(d.getFullYear() + n)
+  return d.toISOString()
+}
 
 export const handlers = [
   http.get('/api/todo/projects', () => HttpResponse.json(db.projects)),
@@ -80,6 +99,7 @@ export const handlers = [
       status: input.status ?? 'open',
       due_at: input.due_at ?? null,
       estimate_minutes: input.estimate_minutes ?? null,
+      recurrence: input.recurrence ?? null,
       position: maxPos + 1, // append to the end of the custom order
       tags: [],
       created_at: now(),
@@ -139,9 +159,35 @@ export const handlers = [
       ...existing,
       ...input,
       project_id: input.project_id ?? null,
+      recurrence: input.recurrence ?? null,
       updated_at: now(),
     }
     db.todos = db.todos.map((t) => (t.id === id ? updated : t))
+
+    // Mirror the backend's recurrence behaviour: completing a repeating task
+    // spawns the next occurrence, un-checking it takes an untouched one back.
+    // Component tests then exercise the same flow the real app sees.
+    if (existing.status === 'open' && updated.status === 'done' && updated.recurrence) {
+      const maxPos = db.todos.reduce((max, t) => Math.max(max, t.position), -1)
+      const next: Todo = {
+        ...updated,
+        id: db.seq++,
+        status: 'open',
+        due_at: nextDueIso(updated.due_at, updated.recurrence),
+        position: maxPos + 1,
+        created_at: now(),
+        updated_at: now(),
+      }
+      db.todos = [...db.todos, next]
+      db.spawnedFrom[next.id] = updated.id
+      if (db.tagLinks[updated.id]) db.tagLinks[next.id] = [...db.tagLinks[updated.id]]
+    } else if (existing.status === 'done' && updated.status === 'open') {
+      const child = [...db.todos].reverse().find((t) => db.spawnedFrom[t.id] === updated.id)
+      if (child && child.status === 'open') {
+        db.todos = db.todos.filter((t) => t.id !== child.id)
+        delete db.tagLinks[child.id]
+      }
+    }
     return HttpResponse.json(updated)
   }),
 ]
