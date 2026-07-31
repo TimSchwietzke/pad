@@ -18,8 +18,9 @@ import { DueField, EffortField, PriorityField, ProjectField, TagsField } from '.
 import { buildMarkdown, exportFields, exportFilename } from './exportMd'
 import type { ExportField, ExportSection } from './exportMd'
 import { formatDue, formatEstimate } from './format'
-import { bucketLabel, bucketOf, bucketOrder, openDueOn, startOfDay, triageStats } from './triage'
-import type { Bucket } from './triage'
+import { bucketOf, openDueOn, startOfDay, triageStats } from './triage'
+import { groupHint, groupKeys, groupTodos } from './grouping'
+import type { Group, GroupKey } from './grouping'
 import {
   Search,
   Moon,
@@ -42,6 +43,7 @@ import {
   ArrowDown,
   ChevronDown,
   ChevronUp,
+  ListTree,
   Check as CheckIcon,
   X as XIcon,
   MoreHorizontal,
@@ -143,6 +145,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   )
   const [density, setDensity] = usePersistentState<Density>('pad.density', 'comfortable')
+  // How the list is split into sub-lists. Its own axis, independent of sort and
+  // density; "date" keeps the deadline buckets that used to be the fixed spine.
+  const [groupBy, setGroupBy] = usePersistentState<GroupKey>('pad.group', 'date')
   // The nav sidebar is fully collapsed by default; opening it slides an elevated panel in
   // and pushes the content over (persisted, like the Claude desktop sidebar).
   const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>('pad.sidebar.open', false)
@@ -394,45 +399,52 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   // Live triage indicators for the focus band, computed over the (project-scoped) list.
   const stats = triageStats(scoped)
 
-  // The list's spine: group the visible tasks into time-to-deadline buckets, with the
-  // chosen sort ordering within each. A manual (custom) order is inherently flat, so it
-  // opts out of grouping. Headers only appear once there's more than one bucket to name.
-  type ListRow = { kind: 'header'; bucket: Bucket; count: number } | { kind: 'todo'; todo: Todo }
+  // The list's spine: split the visible tasks into groups along the chosen axis, the
+  // sort ordering within each. Headers only appear once there's more than one group to
+  // name — a single group needs no label, and "none" is a flat list by definition.
+  const groups = groupTodos(visible, groupBy, {
+    projects: projects.data ?? [],
+    isLeaving: (id) => leaving.has(id),
+  })
+  type TodoRow = { kind: 'todo'; todo: Todo; groupId: string }
+  type ListRow = { kind: 'header'; group: Group } | TodoRow
+  const showHeaders = groups.length > 1
   const listRows: ListRow[] = []
-  if (isCustom) {
-    for (const t of visible) listRows.push({ kind: 'todo', todo: t })
-  } else {
-    const byBucket = new Map<Bucket, Todo[]>()
-    for (const t of visible) {
-      const b = bucketOf(t, leaving.has(t.id))
-      const arr = byBucket.get(b)
-      if (arr) arr.push(t)
-      else byBucket.set(b, [t])
-    }
-    const nonEmpty = bucketOrder.filter((b) => (byBucket.get(b)?.length ?? 0) > 0)
-    const showHeaders = nonEmpty.length > 1
-    for (const b of nonEmpty) {
-      const arr = byBucket.get(b)!
-      if (showHeaders) listRows.push({ kind: 'header', bucket: b, count: arr.length })
-      for (const t of arr) listRows.push({ kind: 'todo', todo: t })
-    }
+  for (const g of groups) {
+    if (showHeaders) listRows.push({ kind: 'header', group: g })
+    for (const t of g.todos) listRows.push({ kind: 'todo', todo: t, groupId: g.id })
   }
 
-  // The exact on-screen order of task ids (across buckets) — the basis for
-  // menu reorder, so "up"/"down" mean what the user sees, not the raw fetch
-  // order (which also holds filtered-out / done tasks).
-  const orderedIds: number[] = []
-  for (const r of listRows) if (r.kind === 'todo') orderedIds.push(r.todo.id)
+  // The exact on-screen order of the task rows — the basis for reordering, so "up"/"down"
+  // mean what the user sees, not the raw fetch order (which also holds filtered-out /
+  // done tasks).
+  const todoRows = listRows.filter((r): r is TodoRow => r.kind === 'todo')
+
+  /**
+   * The visible neighbour a task would swap with, or null when there is none.
+   * Reordering stays inside a group: a task's position doesn't decide which group
+   * it lands in, so a move across a header would look like it did nothing.
+   */
+  /** Whether two visible tasks sit under the same header — the same rule, for drag. */
+  const sameGroup = (a: number, b: number): boolean => {
+    const ga = todoRows.find((r) => r.todo.id === a)?.groupId
+    return ga != null && ga === todoRows.find((r) => r.todo.id === b)?.groupId
+  }
+
+  const neighborOf = (id: number, dir: -1 | 1): number | null => {
+    const i = todoRows.findIndex((r) => r.todo.id === id)
+    const j = i + dir
+    if (i === -1 || j < 0 || j >= todoRows.length) return null
+    return todoRows[j].groupId === todoRows[i].groupId ? todoRows[j].todo.id : null
+  }
 
   /**
    * Move a todo one slot up (-1) or down (+1) past its visible neighbour and
    * persist the result as the custom order — the no-mouse equivalent of a drag.
    */
   const moveBy = (id: number, dir: -1 | 1) => {
-    const i = orderedIds.indexOf(id)
-    const j = i + dir
-    if (i === -1 || j < 0 || j >= orderedIds.length) return
-    const neighborId = orderedIds[j]
+    const neighborId = neighborOf(id, dir)
+    if (neighborId == null) return
     const full = todos.data ?? []
     const from = full.findIndex((t) => t.id === id)
     if (from === -1 || !full.some((t) => t.id === neighborId)) return
@@ -449,7 +461,7 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
   const exportSections: ExportSection[] = []
   for (const row of listRows) {
     if (row.kind === 'header') {
-      exportSections.push({ label: bucketLabel[row.bucket], todos: [] })
+      exportSections.push({ label: row.group.label, todos: [] })
     } else {
       if (exportSections.length === 0) exportSections.push({ label: null, todos: [] })
       exportSections[exportSections.length - 1].todos.push(row.todo)
@@ -715,6 +727,30 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                   </div>
 
                   <div className="controlbar__side">
+                    {/* group-by: the axis that splits the list into sub-lists. Its own
+                        control next to sort (which orders *within* a group). */}
+                    <div className="controlbar__sort">
+                      <span className="controlbar__label">group by</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="sort-trigger" aria-label="group by">
+                            <ListTree size={14} aria-hidden />
+                            {groupBy}
+                            <ChevronDown size={14} className="sort-trigger__caret" aria-hidden />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="min-w-[12.5rem]">
+                          <DropdownMenuLabel>group by</DropdownMenuLabel>
+                          {groupKeys.map((key) => (
+                            <DropdownMenuItem key={key} aria-label={`group by ${key}`} onSelect={() => setGroupBy(key)}>
+                              <span className="menu-check">{groupBy === key && <CheckIcon size={14} />}</span>
+                              <span className="flex-1">{key}</span>
+                              <span className="text-xs text-muted-foreground">{groupHint[key]}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                     <div className="controlbar__sort">
                       <span className="controlbar__label">sort by</span>
                       <DropdownMenu>
@@ -818,13 +854,19 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
 
                 <ul className={`todo-list todo-list--${density}${isCustom ? ' todo-list--custom' : ''}`}>
                   {listRows.map((row) => {
-                    if (row.kind === 'header')
+                    if (row.kind === 'header') {
+                      const g = row.group
                       return (
-                        <li className={`todo-group todo-group--${row.bucket}`} key={`h-${row.bucket}`}>
-                          <span className="todo-group__label">{bucketLabel[row.bucket]}</span>
-                          <span className="todo-group__count">{row.count}</span>
+                        <li className={`todo-group${g.tone ? ` todo-group--${g.tone}` : ''}`} key={`h-${g.id}`}>
+                          <span className="todo-group__label">
+                            {/* projects carry their dot into the header, so the axis is readable at a glance */}
+                            {g.color && <span className="dot" style={{ background: g.color }} />}
+                            {g.label}
+                          </span>
+                          <span className="todo-group__count">{g.todos.length}</span>
                         </li>
                       )
+                    }
                     const todo = row.todo
                     const isEditing = editingId === todo.id
                     const cls =
@@ -847,7 +889,9 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                           setOverId(null)
                         }}
                         onDragOver={(e) => {
-                          if (dragId !== null) {
+                          // only same-group drops are accepted; across a header the move
+                          // would re-rank invisibly, so we don't pretend it's a target
+                          if (dragId !== null && sameGroup(dragId, todo.id)) {
                             e.preventDefault()
                             if (overId !== todo.id) setOverId(todo.id)
                           }
@@ -927,18 +971,13 @@ export function TodoDashboard({ doneGraceMs = 3000 }: { doneGraceMs?: number } =
                             <ChevronUp size={16} />
                           </button>
                         ) : (
-                          (() => {
-                            const i = orderedIds.indexOf(todo.id)
-                            return (
-                              <RowMenu
-                                onDelete={() => remove.mutate(todo.id)}
-                                onMoveUp={() => moveBy(todo.id, -1)}
-                                onMoveDown={() => moveBy(todo.id, 1)}
-                                canUp={i > 0}
-                                canDown={i >= 0 && i < orderedIds.length - 1}
-                              />
-                            )
-                          })()
+                          <RowMenu
+                            onDelete={() => remove.mutate(todo.id)}
+                            onMoveUp={() => moveBy(todo.id, -1)}
+                            onMoveDown={() => moveBy(todo.id, 1)}
+                            canUp={neighborOf(todo.id, -1) != null}
+                            canDown={neighborOf(todo.id, 1) != null}
+                          />
                         )}
                         {/* in custom sort the handle is the drag affordance; otherwise a hint */}
                         <span className="todo__handle" aria-hidden><Grip /></span>
