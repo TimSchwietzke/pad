@@ -608,6 +608,94 @@ describe('TodoDashboard', () => {
     await waitFor(() => expect(screen.getByLabelText('edit notes')).toHaveValue('remember the milk'))
   })
 
+  it('splits the list into one sub-list per project and remembers the choice', async () => {
+    resetDb({
+      projects: [
+        { id: 1, name: 'pad', color: '#2f6fed', created_at: '', updated_at: '' },
+        { id: 2, name: 'home', color: '', created_at: '', updated_at: '' },
+      ],
+      todos: [
+        makeTodo({ id: 1, title: 'ship it', project_id: 1 }),
+        makeTodo({ id: 2, title: 'buy milk', project_id: 2 }),
+        makeTodo({ id: 3, title: 'stray' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('ship it')
+
+    // undated tasks share one bucket, so the date default shows no headers here
+    expect(container.querySelectorAll('.todo-group')).toHaveLength(0)
+
+    await user.click(screen.getByRole('button', { name: 'group by' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'group by project' }))
+
+    const headers = () => [...container.querySelectorAll('.todo-group__label')].map((n) => n.textContent)
+    await waitFor(() => expect(headers()).toEqual(['pad', 'home', 'no project']))
+    expect(JSON.parse(localStorage.getItem('pad.group')!)).toBe('project')
+  })
+
+  it('groups by priority, high first, with done tasks in a trailing group', async () => {
+    resetDb({
+      todos: [
+        makeTodo({ id: 1, title: 'meh', priority: 1 }),
+        makeTodo({ id: 2, title: 'urgent', priority: 3 }),
+        makeTodo({ id: 3, title: 'finished', priority: 3, status: 'done' }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    await screen.findByText('urgent')
+
+    // show open + done so the trailing "done" group has something to hold
+    await user.click(screen.getByRole('button', { name: 'filter' }))
+    await user.click(await screen.findByRole('menuitem', { name: /open \+ done/ }))
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', { name: 'group by' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'group by priority' }))
+
+    const headers = () => [...container.querySelectorAll('.todo-group__label')].map((n) => n.textContent)
+    await waitFor(() => expect(headers()).toEqual(['high', 'low', 'done']))
+  })
+
+  it('keeps menu reordering inside a group', async () => {
+    resetDb({
+      projects: [
+        { id: 1, name: 'pad', color: '', created_at: '', updated_at: '' },
+        { id: 2, name: 'home', color: '', created_at: '', updated_at: '' },
+      ],
+      todos: [
+        makeTodo({ id: 1, title: 'a', project_id: 1, position: 0 }),
+        makeTodo({ id: 2, title: 'b', project_id: 1, position: 1 }),
+        makeTodo({ id: 3, title: 'c', project_id: 2, position: 2 }),
+      ],
+    })
+    const user = userEvent.setup()
+    const { container } = renderWithClient(<TodoDashboard />)
+    await user.click(await screen.findByRole('button', { name: 'toggle sidebar' }))
+    await user.click(await screen.findByRole('button', { name: 'to-dos' }))
+    // (single letters would collide with the avatar's "a", so match on the rows themselves)
+    const titles = () => [...container.querySelectorAll('.todo__title')].map((n) => n.textContent)
+    await waitFor(() => expect(titles()).toEqual(['a', 'b', 'c']))
+
+    await user.click(screen.getByRole('button', { name: 'group by' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'group by project' }))
+    await waitFor(() => expect(container.querySelectorAll('.todo-group')).toHaveLength(2))
+
+    // "b" is last in its group: it can move up, but not down into the next project
+    await user.click(screen.getAllByRole('button', { name: 'task actions' })[1])
+    expect(screen.queryByRole('menuitem', { name: 'move down' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('menuitem', { name: 'move up' }))
+
+    await waitFor(() => expect(titles()).toEqual(['b', 'a', 'c']))
+    await waitFor(() => expect(requestedSorts()).toContain('position'))
+  })
+
   it('shows an error state when the list fails to load', async () => {
     server.use(
       http.get('/api/todo/todos', () =>

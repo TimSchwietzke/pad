@@ -387,15 +387,18 @@ textarea::placeholder {
   padding-top: 4px;
 }
 .todo-group__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
-/* only the two urgent buckets carry colour, so the accent stays meaningful */
-.todo-group--overdue .todo-group__label {
+/* only the two urgent date buckets carry colour, so the accent stays meaningful */
+.todo-group--danger .todo-group__label {
   color: var(--color-danger);
 }
-.todo-group--today .todo-group__label {
+.todo-group--accent .todo-group__label {
   color: var(--color-primary);
 }
 .todo-group__count {
